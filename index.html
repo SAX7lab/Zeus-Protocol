@@ -3818,14 +3818,16 @@ function systemsReport(){
   // Days since the newest panel. PANELS is date-sorted, so the last is newest.
   // Counted from the date IN the report, not from when it was imported — a
   // panel uploaded today but drawn six weeks ago is six weeks old.
-  // Thresholds are the user's own testing cadence (monthly), set in August
-  // 2026; they replaced a 180/240 default that assumed twice a year.
+  // Thresholds are the user's own testing cadence, set in September 2026:
+  // amber past two months, red past three. They replaced a 30/60 pair that
+  // ran ahead of an actually-monthly routine, which had it turning amber
+  // before a panel was even due.
   if(PANELS.length){
     const last=PANELS[PANELS.length-1];
     const days=Math.floor((dayStart(new Date())-dayStart(parseDay(last.date)))/86400000);
     out.push({key:'bio', label:'Biomarkers',
       detail:days+' day'+(days===1?'':'s')+' since panel', val:days+'d',
-      state: days>60?'warn' : days>30?'watch' : 'ok'});
+      state: days>90?'warn' : days>60?'watch' : 'ok'});
   } else {
     out.push({key:'bio', label:'Biomarkers', detail:'no panel on file',
       val:'none', state:'watch'});

@@ -1547,12 +1547,21 @@ function collectState(){
     SUB_PROXY, SUB_MINUTES, EAT_START, EAT_END
   };
 }
+let lastSavedJSON=null;
 function saveAll(){
   if(!canPersist) return;
   try{
-    localStorage.setItem(DB_KEY, JSON.stringify(collectState()));
+    const json=JSON.stringify(collectState());
+    localStorage.setItem(DB_KEY, json);
     lastSaveOk=true;
-    cloudMarkDirty();
+    // render() calls saveAll() on every single render, including ones
+    // that changed nothing (a re-render from a completed cloud push,
+    // say). Only mark dirty when the payload actually differs — otherwise
+    // that push's own render() re-arms cloudSchedulePush(), which fires
+    // again in 3s and calls render() again: a self-sustaining loop that
+    // silently rebuilt the whole tab (wiping any in-progress typing,
+    // e.g. a Connections token label) every few seconds forever.
+    if(json!==lastSavedJSON){ lastSavedJSON=json; cloudMarkDirty(); }
   }catch(e){ canPersist=false; lastSaveOk=false; }
 }
 // Old saved panels kept values as {markerKey:{v,unit}}; convert to the
@@ -4438,6 +4447,25 @@ async function connLoadTokens(){
     connMsg=e.message||connMsg;
   }
 }
+function connTokenListHTML(){
+  if(connLoading) return '<div class="sub-empty">Loading…</div>';
+  if(!connTokens.length) return '<div class="sub-empty">No tokens yet.</div>';
+  return connTokens.map(t=>`
+    <div class="sub-row">
+      <div class="sub-info">
+        <div class="sub-name">${esc(t.label||'Unnamed token')}</div>
+        <div class="sub-meta">Created ${new Date(t.created_at).toLocaleDateString()} · ${t.last_used?'last used '+new Date(t.last_used).toLocaleString():'never used'}</div>
+      </div>
+      <button class="ico del" onclick="connRevokeToken('${t.id}')" title="Revoke">✕</button>
+    </div>`).join('');
+}
+// Refreshes just the token list in place, not the whole card via render() —
+// the label input sits in the same card, and a full render() while someone
+// is mid-label would blow their typing away the moment this resolves.
+function refreshConnTokenList(){
+  const el=document.getElementById('connTokenList');
+  if(el) el.innerHTML=connTokenListHTML();
+}
 async function connGenerateToken(){
   if(!cloudSession||connGenerating) return;
   const el=document.getElementById('connLabelInput');
@@ -4467,10 +4495,11 @@ async function connRevokeToken(id){
       .update({revoked_at:new Date().toISOString()}).eq('id',id);
     if(error) throw error;
     await connLoadTokens();
+    refreshConnTokenList();
   }catch(e){
     connMsg=e.message||'Could not revoke the token.';
+    render();
   }
-  render();
 }
 async function connCopyToken(){
   if(!connGeneratedPlaintext) return;
@@ -4486,7 +4515,10 @@ function connectionsCardHTML(){
   if(!cloudSession) return '';
   if(!connLoaded&&!connLoading){
     connLoading=true;
-    connLoadTokens().then(()=>{ connLoading=false; connLoaded=true; render(); });
+    // Targeted refresh, not render(): this can resolve while someone is
+    // mid-way through typing a label in the very same card, and a full
+    // render() would wipe that input the instant it landed.
+    connLoadTokens().then(()=>{ connLoading=false; connLoaded=true; refreshConnTokenList(); });
   }
   const genBlock = connGeneratedPlaintext ? `
     <div class="gsub" style="color:var(--amber);margin-bottom:6px">Copy this now — it will not be shown again.</div>
@@ -4499,22 +4531,12 @@ function connectionsCardHTML(){
     <div class="backup-row" style="margin-top:0">
       <button class="gbtn pri" ${connGenerating?'disabled':''} onclick="connGenerateToken()">${connGenerating?'Generating…':'Generate Shortcut token'}</button>
     </div>`;
-  const rows=connTokens.map(t=>`
-    <div class="sub-row">
-      <div class="sub-info">
-        <div class="sub-name">${esc(t.label||'Unnamed token')}</div>
-        <div class="sub-meta">Created ${new Date(t.created_at).toLocaleDateString()} · ${t.last_used?'last used '+new Date(t.last_used).toLocaleString():'never used'}</div>
-      </div>
-      <button class="ico del" onclick="connRevokeToken('${t.id}')" title="Revoke">✕</button>
-    </div>`).join('');
   return `<div class="gcard">
     <div class="gtop"><span class="gtitle">Connections</span></div>
     <div class="gsub">Long-lived tokens for the Apple Shortcut that sends Health data — a signed-in session expires in about an hour, too short for a daily automation.</div>
     ${genBlock}
     ${connMsg?`<div class="gsub" style="margin:10px 0 0;color:${/copied/i.test(connMsg)?'var(--moss)':'var(--rose)'}">${esc(connMsg)}</div>`:''}
-    <div style="margin-top:14px">
-      ${connLoading?'<div class="sub-empty">Loading…</div>':(rows||'<div class="sub-empty">No tokens yet.</div>')}
-    </div>
+    <div id="connTokenList" style="margin-top:14px">${connTokenListHTML()}</div>
   </div>`;
 }
 

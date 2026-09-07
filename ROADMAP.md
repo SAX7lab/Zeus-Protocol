@@ -2,13 +2,14 @@
 
 ## Status
 
-**Phase 5 — backend, accounts, integrations (current), as of 2026-09-05.**
+**Phase 5 — backend, accounts, integrations (current), as of 2026-09-07.**
 5.1 (Supabase accounts with local-first sync), 5.2 (GDPR consent gating) and
 5.4 (per-user personalisation) are deployed and working. **5.3 is in
-progress:** the `ingest` Edge Function and device-token management
-(Connections panel) are deployed and verified end-to-end. Still open: the
-actual Apple Shortcut, reading Apple Health data back into the app, and
-Whoop; Eight Sleep stays deferred.
+progress:** the `ingest` Edge Function, device-token management
+(Connections panel), and reading metrics back into the app (Bio's Activity
+card, the Agenda's steps/workout-minutes line) are all deployed and
+verified end-to-end. Still open: the actual Apple Shortcut itself running
+on-device, and Whoop; Eight Sleep stays deferred.
 
 **Phase 6** exists as a later option, not a commitment: packaging the web app
 properly, from PWA polish up to a native shell. Only 6.1 is a given; anything
@@ -56,7 +57,7 @@ are scoped per user, and cross-user writes are rejected.
 
 | Source | Path | Notes |
 |---|---|---|
-| **Apple Health** | Shortcuts automation → POST to Edge Function | Only viable route; HealthKit has no web API. Each user installs the Shortcut once. Priority. Ingest side **deployed and verified 2026-09-05** — see below. Still open: the Shortcut itself, and reading `metrics` back into the Agenda/Bio tab. |
+| **Apple Health** | Shortcuts automation → POST to Edge Function | Only viable route; HealthKit has no web API. Each user installs the Shortcut once. Priority. Ingest side and the read-back into the app are **deployed and verified 2026-09-05/07** — see below. Still open: the Shortcut itself, running on-device. |
 | **Whoop** | OAuth 2.0 authorization code via Edge Function | Public API exists. Client secret lives server-side; function handles token refresh. Not started. |
 | **Eight Sleep** | Deferred | No official API. Unofficial endpoints need account credentials — not acceptable for other people's accounts. Self-use only, if at all. |
 
@@ -75,6 +76,17 @@ a real multi-day write, upsert-replace, and revoked-token rejection.
 `index.html`'s account panel has a **Connections** section to generate,
 list and revoke these device tokens; the plaintext is shown once and never
 persisted anywhere.
+
+**Read-back deployed and verified (2026-09-07).** `cloudFetchMetrics()`
+pulls the last 30 days into a local `METRICS` object (day → source → data)
+on sign-in and on every sync — read-only, cloud-only, empty signed out.
+Bio gets an Activity card above the biomarker panels (steps, workout
+minutes, 7-day-average delta, a 30-day bar chart per metric, "Synced
+HH:MM" / "Last sync N days ago" past 36h so a silently broken Shortcut is
+visible); the Agenda gets a compact steps/workout-minutes line, today
+only. Nothing assumes `source === 'apple_health'` — fields are merged
+across whatever sources exist for a day, so Whoop only has to start
+writing to the same table.
 
 ### 5.4 Personalisation
 

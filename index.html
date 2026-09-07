@@ -480,6 +480,10 @@
   .md-chart { margin:16px 0 6px; }
   .md-chart svg { width:100%; height:auto; display:block; }
   .md-sec { color:var(--faint); padding:16px 0 6px; }
+  .act-stats { display:flex; gap:28px; margin:2px 0 4px; }
+  .act-stat { flex:1; min-width:0; }
+  .act-today { display:flex; gap:18px; padding:2px 6px 14px; font-size:13px; color:var(--muted); }
+  .act-today b { font-family:var(--mono); color:var(--ink); font-weight:700; }
   .md-row { display:flex; align-items:baseline; gap:10px; padding:9px 0;
     border-bottom:1px solid var(--line); font-size:13px; }
   .md-date { flex:1; color:var(--ink); }
@@ -1713,6 +1717,12 @@ let acctOpen=false, acctBusy=false, acctMsg='', acctEmailDraft='';
 // signs in never touches this at all.
 let consentRow=null, consentGateOpen=false, consentChecked=false;
 let acctDeleteOpen=false, acctDeleteTyped='', acctDeleteBusy=false, acctDeleteMsg='';
+// ROADMAP.md 5.3. {day: {source: {data, updated_at}}} — the last 30 days,
+// fetched on sign-in and on every sync (cloudFetchMetrics). Cloud-only by
+// nature: never written to DB_KEY, never touched signed out, so it is
+// always {} for a local-only user rather than showing stale numbers.
+let METRICS={};
+let actSelectedDay=null;   // null = default to today, or the newest day with data
 
 function loadCloudMeta(){
   try{
@@ -1837,6 +1847,71 @@ async function cloudProceedAfterAuth(sb){
   await cloudReconcile(sb);
   await cloudSyncProfile(sb);
 }
+// ROADMAP.md 5.3. Pulls the last 30 days from metrics into METRICS, keyed
+// day -> source -> {data, updated_at}. Called from cloudReconcile() so it
+// runs on sign-in and on every sync. Read-only mirror into the app — never
+// pushed back, so there is no local-vs-remote conflict to resolve here.
+async function cloudFetchMetrics(sb){
+  if(!cloudSession) return;
+  try{
+    const since=new Date(); since.setDate(since.getDate()-30);
+    const {data,error}=await sb.from('metrics')
+      .select('day,source,data,updated_at')
+      .eq('user_id',cloudSession.user.id)
+      .gte('day',key(since))
+      .order('day',{ascending:true});
+    if(error) throw error;
+    const next={};
+    (data||[]).forEach(row=>{
+      if(!next[row.day]) next[row.day]={};
+      next[row.day][row.source]={data:row.data, updated_at:row.updated_at};
+    });
+    METRICS=next;
+  }catch(e){
+    // Not fatal to the rest of the sync — leave whatever METRICS already
+    // held (stale is better than blanked) and surface the message.
+    cloudStatusMsg=e.message||cloudStatusMsg;
+  }
+}
+// Merges every source's fields for one day into a flat object — Whoop will
+// add sleep/recovery to the same table later, and this is the one place
+// that has to change to pick them up: nowhere assumes source==='apple_health'.
+function activityDataFor(day){
+  const bySource=METRICS[day];
+  if(!bySource) return null;
+  const data={};
+  let updated=null;
+  Object.values(bySource).forEach(entry=>{
+    Object.assign(data, entry.data);
+    if(!updated || entry.updated_at>updated) updated=entry.updated_at;
+  });
+  return {data, updated_at:updated};
+}
+// Tolerates both shapes seen from the Shortcut: a flat workout_minutes
+// number, or an older workouts[] array (each carrying its own minutes).
+function activityMinutesFor(data){
+  if(!data) return null;
+  if(typeof data.workout_minutes==='number') return data.workout_minutes;
+  if(Array.isArray(data.workouts)){
+    const sum=data.workouts.reduce((s,w)=>s+(Number(w&&w.minutes)||0),0);
+    return data.workouts.length?sum:null;
+  }
+  return null;
+}
+function activityStepsFor(data){
+  return data && typeof data.steps==='number' ? data.steps : null;
+}
+// Newest updated_at across every day/source currently held — "when did
+// the Shortcut last actually run", independent of which day is selected.
+function metricsFreshness(){
+  let newest=null;
+  Object.values(METRICS).forEach(bySource=>{
+    Object.values(bySource).forEach(entry=>{
+      if(!newest || entry.updated_at>newest) newest=entry.updated_at;
+    });
+  });
+  return newest;
+}
 // ROADMAP.md 5.4. Runs after cloudReconcile() above so that, on a brand
 // new profiles row, checking app_data tells us whether this account
 // already had real data — from this device's history or another's —
@@ -1892,6 +1967,10 @@ async function cloudReconcile(sb){
   if(consentGateOpen) return;   // no data syncs until consent is recorded
   if(!navigator.onLine){ cloudStatus='offline'; if(activeTab==='cal') render(); return; }
   cloudStatus='pending'; if(activeTab==='cal') render();
+  // Independent of the app_data reconciliation below: metrics is a
+  // read-only mirror INTO the app (ROADMAP.md 5.3), not a bidirectional
+  // sync, so it has no conflict concept and no reason to wait on one.
+  await cloudFetchMetrics(sb);
   let remoteRow=null;
   try{
     const {data,error}=await sb.from('app_data')
@@ -3912,7 +3991,21 @@ function systemsHTML(){
 let sysOpen=false;
 function sysToggle(){ sysOpen=!sysOpen; render(); }
 
+// ROADMAP.md 5.3. Today only — a past or future day has no "today's
+// activity" to show — and only when there is actually something to show,
+// so a signed-out user or a day before the Shortcut existed sees nothing.
+function agendaActivityLineHTML(){
+  if(!sameDay(viewDate,new Date())) return '';
+  const entry=activityDataFor(key(new Date()));
+  if(!entry) return '';
+  const steps=activityStepsFor(entry.data), mins=activityMinutesFor(entry.data);
+  const parts=[];
+  if(steps!=null) parts.push(`<span><b>${esc(steps.toLocaleString('en-GB'))}</b> steps</span>`);
+  if(mins!=null) parts.push(`<span><b>${esc(String(mins))}</b> min active</span>`);
+  return parts.length?`<div class="act-today">${parts.join('')}</div>`:'';
+}
 function renderAgenda(c){
+  c.insertAdjacentHTML('beforeend', agendaActivityLineHTML());
   c.insertAdjacentHTML('beforeend', systemsHTML());
   const items=agendaOn(viewDate);
   // insertAdjacentHTML, not innerHTML: the systems block is already in here
@@ -4242,6 +4335,7 @@ async function acctSignOut(){
   acctDeleteOpen=false; acctDeleteTyped=''; acctDeleteBusy=false; acctDeleteMsg='';
   connLoaded=false; connLoading=false; connTokens=[];
   connNewLabel=''; connGenerating=false; connGeneratedPlaintext=null; connMsg='';
+  METRICS={}; actSelectedDay=null;
   saveCloudMeta();
   render();
 }
@@ -5110,6 +5204,118 @@ function bpDelete(id){
 }
 let bpMsg='';
 
+/* ---------- ACTIVITY (ROADMAP.md 5.3) ----------
+   Steps and workout minutes from metrics, read into METRICS by
+   cloudFetchMetrics(). Signed out, METRICS is always {} (never persisted
+   to DB_KEY — see its declaration), so this whole section renders nothing,
+   same as if it did not exist. */
+const ACTIVITY_METRICS=[
+  {key:'steps', label:'steps', color:'var(--clay)', get:activityStepsFor},
+  {key:'mins',  label:'workout min', color:'var(--frost)', get:d=>activityMinutesFor(d)},
+];
+// The canonical 30-calendar-day range, today last — NOT Object.keys(METRICS).
+// A day METRICS has no entry for still needs its own slot here, both so the
+// chart leaves a visible gap at the right date instead of silently
+// shrinking to fewer columns, and so tapping that gap can still select it
+// (activityDataFor() returning null is exactly the "no data" case below).
+function activityDayRange(){
+  const out=[];
+  for(let i=29;i>=0;i--){ const d=new Date(); d.setDate(d.getDate()-i); out.push(key(d)); }
+  return out;
+}
+function pickActivityDay(day){ actSelectedDay=day; render(); }
+// Trailing 7 days strictly before `day` (not including it) — comparing a
+// day against a baseline that already contains itself would flatter or
+// punish it depending on which way it moved.
+function activityTrailingAvg(days,day,get){
+  const idx=days.indexOf(day);
+  if(idx<0) return null;
+  const window=days.slice(Math.max(0,idx-7),idx);
+  const vals=window.map(d=>{ const e=activityDataFor(d); return e?get(e.data):null; }).filter(v=>v!=null);
+  if(!vals.length) return null;
+  return vals.reduce((s,v)=>s+v,0)/vals.length;
+}
+function activityDeltaHTML(val,avg){
+  if(val==null||avg==null||avg===0) return '';
+  const pct=(val-avg)/avg*100;
+  const up=pct>=0;
+  return `<div class="md-delta" style="color:${up?'var(--moss)':'var(--amber)'}">${up?'▲ +':'▼ '}${Math.abs(pct).toFixed(0)}% vs 7-day avg</div>`;
+}
+function activityFmtDay(d){
+  const [y,m,dd]=d.split('-').map(Number);
+  return new Date(y,m-1,dd).toLocaleDateString('en-GB',{day:'numeric',month:'short'});
+}
+function activityBarChartSVG(days,metric){
+  const W=320,H=132,PL=6,PR=6,PT=8,PB=20;
+  const PW=W-PL-PR, PH=H-PT-PB;
+  const n=days.length, gap=1.5;
+  const bw=Math.max(1,(PW-gap*(n-1))/n);
+  const vals=days.map(d=>{ const e=activityDataFor(d); return e?metric.get(e.data):null; });
+  const numeric=vals.filter(v=>v!=null);
+  const maxV=numeric.length?Math.max(...numeric,1):1;
+  const avg=numeric.length?numeric.reduce((s,v)=>s+v,0)/numeric.length:null;
+  const yOf=v=>PT+PH-(v/maxV)*PH;
+  const bars=days.map((d,i)=>{
+    const v=vals[i]; if(v==null) return '';   // no bar for a missing day — a gap, not a zero
+    const x=PL+i*(bw+gap), y=yOf(v), h=Math.max(0,PT+PH-y);
+    const selected=d===actSelectedDay;
+    return `<rect x="${x.toFixed(1)}" y="${y.toFixed(1)}" width="${bw.toFixed(1)}" height="${h.toFixed(1)}"
+      fill="${metric.color}" opacity="${selected?1:0.7}"/>`;
+  }).join('');
+  const hits=days.map((d,i)=>{
+    const x=PL+i*(bw+gap);
+    return `<rect x="${x.toFixed(1)}" y="${PT}" width="${bw.toFixed(1)}" height="${PH}"
+      fill="transparent" style="cursor:pointer" onclick="pickActivityDay('${d}')"/>`;
+  }).join('');
+  const avgLine=avg!=null?`<line x1="${PL}" y1="${yOf(avg).toFixed(1)}" x2="${W-PR}" y2="${yOf(avg).toFixed(1)}"
+    stroke="${metric.color}" stroke-width="1" stroke-dasharray="3 3" opacity=".6"/>`:'';
+  return `<div class="md-chart"><svg viewBox="0 0 ${W} ${H}" role="img" aria-label="${esc(metric.label)}, last 30 days">
+    ${avgLine}${bars}${hits}
+    <text x="${PL}" y="${H-6}" fill="var(--faint)" font-size="9" font-family="var(--mono)">${esc(activityFmtDay(days[0]))}</text>
+    <text x="${W-PR}" y="${H-6}" text-anchor="end" fill="var(--faint)" font-size="9" font-family="var(--mono)">${esc(activityFmtDay(days[days.length-1]))}</text>
+  </svg></div>`;
+}
+function activityFreshnessHTML(){
+  const newest=metricsFreshness();
+  if(!newest) return '';
+  const d=new Date(newest);
+  const hoursAgo=(Date.now()-d.getTime())/3600000;
+  if(hoursAgo>36){
+    const days=Math.floor(hoursAgo/24);
+    return `<span style="color:var(--amber)">Last sync ${days<1?'today':days+' day'+(days===1?'':'s')+' ago'}</span>`;
+  }
+  const hh=String(d.getHours()).padStart(2,'0'), mm=String(d.getMinutes()).padStart(2,'0');
+  return `<span style="color:var(--faint)">Synced ${hh}:${mm}</span>`;
+}
+function activitySectionHTML(){
+  if(!cloudSession) return '';   // cloud-only by nature
+  if(!Object.keys(METRICS).length) return '';   // nothing has ever synced
+  const days=activityDayRange();
+  const todayKey=key(new Date());
+  const selDay=actSelectedDay&&days.includes(actSelectedDay)?actSelectedDay:todayKey;
+  const entry=activityDataFor(selDay);
+
+  const stats=ACTIVITY_METRICS.map(m=>{
+    const val=entry?m.get(entry.data):null;
+    const avg=activityTrailingAvg(days,selDay,m.get);
+    return `<div class="act-stat">
+      <div class="md-val">${val!=null?val.toLocaleString('en-GB'):'—'}</div>
+      <div class="md-unit">${esc(m.label)}</div>
+      ${activityDeltaHTML(val,avg)}
+    </div>`;
+  }).join('');
+
+  const charts=ACTIVITY_METRICS.map(m=>activityBarChartSVG(days,m)).join('');
+
+  return `<div class="gcard">
+    <div class="gtop"><span class="day-sep" style="padding:0">Activity</span>
+      <span style="flex:1"></span>${activityFreshnessHTML()}</div>
+    <div class="gsub">${esc(activityFmtDay(selDay))}${selDay===todayKey?' · today':''}</div>
+    <div class="act-stats">${stats}</div>
+    ${charts}
+  </div>`;
+}
+
 function bpSectionHTML(){
   const last=bpLatest();
   const lastHTML = last
@@ -5290,7 +5496,10 @@ function renderBio(c){
   /* The folds are rendered FIRST but sit off-screen: blood pressure carries
      id="scrollAnchor", and scrollToAnchor() puts it just under the header on
      open, so the tab lands on blood pressure and the occasional controls are
-     a scroll up away rather than something to scroll past every time. */
+     a scroll up away rather than something to scroll past every time. Same
+     applies to the activity card below — it renders nothing at all when
+     signed out or before the first sync, so it costs nothing to sit above. */
+  c.insertAdjacentHTML('beforeend', activitySectionHTML());
   c.insertAdjacentHTML('beforeend', bioFold('Integrations',bioIntegrationsOpen,'bioIntegrationsOpen'));
   if(bioIntegrationsOpen){
     c.insertAdjacentHTML('beforeend',

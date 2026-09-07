@@ -1,0 +1,45 @@
+name: Whoop sync (all accounts)
+
+# Triggers whoop-sync-all twice a day so recovery/strain/sleep data is fresh
+# without anyone opening the app and hitting "Sync now". Times are meant to
+# be 7am and 9pm local (Vienna, CEST = UTC+2), so 05:00 and 19:00 UTC below —
+# note this drifts an hour off local time during CET (winter, UTC+1); revisit
+# the cron lines if that matters.
+#
+# Auth: whoop-sync-all treats the Supabase service-role key itself as the
+# bearer token (see supabase/functions/whoop-sync-all/index.ts for why that's
+# safe). Store it as the SUPABASE_SERVICE_ROLE_KEY secret below — same
+# Settings -> Secrets and variables -> Actions as SUPABASE_URL.
+
+on:
+  schedule:
+    - cron: '0 5 * * *'    # ~7am CEST
+    - cron: '0 19 * * *'   # ~9pm CEST
+  workflow_dispatch:        # lets you trigger it by hand to test
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Call whoop-sync-all
+        run: |
+          call() {
+            curl -s -o /tmp/out.json -w '%{http_code}' \
+              -X POST "${{ secrets.SUPABASE_URL }}/functions/v1/whoop-sync-all" \
+              -H "Authorization: Bearer ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}" \
+              -H "Content-Type: application/json"
+          }
+          code=$(call)
+          echo "HTTP $code"
+          cat /tmp/out.json
+          if [ "$code" != "200" ]; then
+            echo "First attempt failed — a paused project needs ~30s to wake. Retrying in 45s..."
+            sleep 45
+            code=$(call)
+            echo "HTTP $code"
+            cat /tmp/out.json
+          fi
+          if [ "$code" != "200" ]; then
+            echo "Whoop sync failed — project may be paused, or the service-role secret is wrong/missing."
+            exit 1
+          fi

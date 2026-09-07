@@ -10,10 +10,11 @@ done:** Apple Health (`ingest`, device tokens) and Whoop (OAuth connect +
 Integrations tab — Whoop-style rings for recovery/sleep, strain, 30-day
 trend charts, real Connect/Sync actions — moved out of Bio, which now
 holds only biomarker panels and blood pressure. Verified end-to-end
-against the operator's own connected Whoop account. Still open: the
-actual Apple Shortcut running on-device (data only arrives when it's
-manually triggered so far) and scheduling whoop-sync to run on its own
-instead of only on demand; Eight Sleep stays deferred.
+against the operator's own connected Whoop account, including a
+day-attribution fix and twice-daily scheduled syncing, both **deployed
+and verified 2026-09-07** — see below. Still open: the actual Apple
+Shortcut running on-device (data only arrives when it's manually
+triggered so far); Eight Sleep stays deferred.
 
 **Phase 6** exists as a later option, not a commitment: packaging the web app
 properly, from PWA polish up to a native shell. Only 6.1 is a given; anything
@@ -62,7 +63,7 @@ are scoped per user, and cross-user writes are rejected.
 | Source | Path | Notes |
 |---|---|---|
 | **Apple Health** | Shortcuts automation → POST to Edge Function | Only viable route; HealthKit has no web API. Each user installs the Shortcut once. Priority. Ingest side and the read-back into the app are **deployed and verified 2026-09-05/07** — see below. Still open: the Shortcut itself, running on-device. |
-| **Whoop** | OAuth 2.0 authorization code via Edge Function | Public API exists. Client secret lives server-side; function handles token refresh. Connect flow and data sync **deployed and verified 2026-09-07** — see below. Still open: scheduling the sync to run on its own. |
+| **Whoop** | OAuth 2.0 authorization code via Edge Function | Public API exists. Client secret lives server-side; function handles token refresh. Connect flow, data sync, day-attribution fix and scheduled sync **deployed and verified 2026-09-07** — see below. |
 | **Eight Sleep** | Deferred | No official API. Unofficial endpoints need account credentials — not acceptable for other people's accounts. Self-use only, if at all. |
 
 Store fetched metrics per user and per day, keyed by source, so the agenda and
@@ -119,6 +120,31 @@ duplicating every workout on it exactly 20x (every stored count was a
 multiple of 20 — that's how it was caught). Fixed by also stopping when
 the token doesn't change or a page returns fewer records than requested;
 re-running the sync self-healed the affected rows via the upsert.
+
+**Day-attribution bug found and fixed (2026-09-07).** Every cycle/sleep/
+recovery entry was landing one day early — today's data showing as
+yesterday's. Whoop's `cycle` and `sleep` records carry a `start` timestamp
+from the previous evening (sleep onset) but a `created_at` timestamp from
+when Whoop actually scores the record, after waking — the day it belongs
+to. The sync bucketed by `start`; confirmed against a real cycle
+(`start` 06:05 the day before, `created_at` 06:05 the morning of) and
+fixed by bucketing cycles and sleep on `created_at` instead. `workout`
+records are untouched — they happen during the day, so `start` was
+already the right day for them.
+
+**Scheduled sync deployed (2026-09-07).** The sync body moved out of
+`whoop-sync/index.ts` into `syncWhoopUser()` in
+`supabase/functions/_shared/whoop.ts`, shared by two Edge Functions:
+`whoop-sync` (one user, the caller's own JWT — unchanged contract, still
+what the "Sync now" button calls) and the new `whoop-sync-all` (every
+connected account, service-role-authenticated — whoever holds that key
+already has full DB access, so treating it as the bearer token adds no
+exposure, it just means only something holding it as a secret can trigger
+a sync for everyone at once). `.github/workflows/whoop-sync.yml` calls
+`whoop-sync-all` on a cron at 05:00 and 19:00 UTC (~7am/9pm CEST — revisit
+the cron lines once CET/winter DST matters), authenticated with a new
+`SUPABASE_SERVICE_ROLE_KEY` GitHub Actions secret, same pattern as
+`keep-alive.yml`'s wake-a-paused-project retry.
 
 The app's Integrations tab (new: a 7th entry in `SECTION_KEYS`, its own
 tab button, collapsible in Personalisation like every other section)

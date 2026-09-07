@@ -480,7 +480,7 @@
   .act-stat { flex:1; min-width:0; }
   .act-today { display:flex; gap:18px; padding:2px 6px 14px; font-size:13px; color:var(--muted); }
   .act-today b { font-family:var(--mono); color:var(--ink); font-weight:700; }
-  .whoop-rings { display:flex; align-items:center; gap:22px; margin:8px 0 14px; flex-wrap:wrap; }
+  .whoop-rings { display:flex; align-items:center; justify-content:center; gap:12px; margin:8px 0 14px; flex-wrap:wrap; }
   .whoop-ring-tile { text-align:center; }
   .whoop-ring-label { font-size:11.5px; color:var(--muted); margin-top:4px; }
   .md-row { display:flex; align-items:baseline; gap:10px; padding:9px 0;
@@ -5502,17 +5502,22 @@ function whoopSectionHTML(){
   // by strain/21 but the label in the middle stays the raw strain number,
   // same as the Whoop app — not the fill percentage.
   const strainPct = strain!=null ? Math.min(100,(strain/21)*100) : null;
+  // Sized (and the container gap tightened) so all three fit on one row
+  // even at a narrow phone width — at the default 96px ring size, three
+  // rings plus the old 22px gaps ran past a 375px screen's content width
+  // and wrapped the third ring onto its own line.
+  const RS=76, RSW=8;
   const rings=`<div class="whoop-rings">
     <div class="whoop-ring-tile">
-      ${ringSVG(sleep,sleep!=null?sleepColor(sleep):null)}
+      ${ringSVG(sleep,sleep!=null?sleepColor(sleep):null,RS,RSW)}
       <div class="whoop-ring-label">Sleep</div>
     </div>
     <div class="whoop-ring-tile">
-      ${ringSVG(recovery,recovery!=null?recoveryColor(recovery):null)}
+      ${ringSVG(recovery,recovery!=null?recoveryColor(recovery):null,RS,RSW)}
       <div class="whoop-ring-label">Recovery</div>
     </div>
     <div class="whoop-ring-tile">
-      ${ringSVG(strainPct,'var(--frost)',null,null,strain!=null?strain.toFixed(1):null)}
+      ${ringSVG(strainPct,'var(--frost)',RS,RSW,strain!=null?strain.toFixed(1):null)}
       <div class="whoop-ring-label">Strain</div>
     </div>
   </div>`;
@@ -5850,7 +5855,12 @@ function renderProgress(){
   // its colour is whether anything anywhere needs attention — so a full bar
   // can still read amber with, say, a blood panel overdue. Same rule as the
   // SYSTEMS dot, via systemsWorst(), so they can never disagree.
-  const worst=systemsWorst();
+  //
+  // Integrations is excluded here specifically: a Whoop recovery score is
+  // not something achieved or missed today the way a routine or an overdue
+  // panel is, so it should not tint the ONE number that measures completion.
+  // It still shows its own colour on its own SYSTEMS row and Nexus node.
+  const worst=systemsWorst(systemsReport().filter(r=>r.key!=='integrations'));
   ['watch','warn'].forEach(c=>{ bar.classList.toggle(c,worst===c); pctEl.classList.toggle(c,worst===c); });
 }
 

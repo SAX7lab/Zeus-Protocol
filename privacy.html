@@ -1,0 +1,195 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="color-scheme" content="dark">
+<meta name="theme-color" content="#14201d">
+<title>Privacy Policy — ZEUS Protocol</title>
+<style>
+  :root{
+    --bg:#14201d; --surface:#1b2a26; --ink:#ece7d6;
+    --muted:rgba(236,231,214,0.62); --faint:rgba(236,231,214,0.34);
+    --line:rgba(236,231,214,0.14);
+    --frost:#6fc4d8; --moss:#8fce8a; --amber:#d4bd6e;
+    --mono:ui-monospace,"SF Mono",SFMono-Regular,Menlo,monospace;
+  }
+  *{margin:0;padding:0;box-sizing:border-box}
+  html{background-color:#14201d}
+  body{
+    background:var(--bg); color:var(--ink);
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
+    line-height:1.65; font-size:15px;
+    padding:38px 22px 80px; max-width:760px; margin:0 auto;
+    -webkit-text-size-adjust:100%;
+  }
+  .eyebrow{font-family:var(--mono); font-size:10.5px; letter-spacing:.16em;
+    text-transform:uppercase; color:var(--frost); margin-bottom:8px}
+  h1{font-family:Georgia,serif; font-size:29px; font-weight:600; line-height:1.15}
+  .updated{font-family:var(--mono); font-size:11px; color:var(--faint);
+    margin-top:10px; letter-spacing:.05em}
+  h2{font-family:Georgia,serif; font-size:19px; font-weight:600;
+    margin:34px 0 10px; padding-top:22px; border-top:1px solid var(--line)}
+  h3{font-size:14px; font-weight:600; margin:20px 0 6px; color:var(--ink)}
+  p{margin-bottom:12px; color:var(--muted)}
+  strong{color:var(--ink); font-weight:600}
+  ul{margin:0 0 14px 20px; color:var(--muted)}
+  li{margin-bottom:6px}
+  a{color:var(--frost)}
+  table{width:100%; border-collapse:collapse; margin:12px 0 18px; font-size:13.5px}
+  th{text-align:left; font-family:var(--mono); font-size:10px; letter-spacing:.12em;
+    text-transform:uppercase; color:var(--faint); font-weight:600;
+    padding:8px 10px 8px 0; border-bottom:1px solid var(--line)}
+  td{padding:9px 10px 9px 0; border-bottom:1px solid var(--line);
+    color:var(--muted); vertical-align:top}
+  td:first-child{color:var(--ink); white-space:nowrap}
+  .callout{background:rgba(143,206,138,.09); border:1px solid rgba(143,206,138,.28);
+    border-radius:12px; padding:15px 17px; margin:18px 0}
+  .callout p{color:var(--ink); margin:0}
+  .fill{background:rgba(212,189,110,.14); border:1px solid rgba(212,189,110,.4);
+    border-radius:12px; padding:15px 17px; margin:18px 0}
+  .fill p{color:var(--amber); margin:0; font-size:13.5px}
+  footer{margin-top:44px; padding-top:20px; border-top:1px solid var(--line);
+    font-size:12.5px; color:var(--faint)}
+</style>
+</head>
+<body>
+
+<div class="eyebrow">ZEUS Protocol</div>
+<h1>Privacy Policy</h1>
+<div class="updated">Last updated: 7 September 2026 · Version 1.0</div>
+
+<h2>1. Who is responsible</h2>
+<p>ZEUS Protocol is a personal health and daily-structure application operated by a
+private individual, not a company.</p>
+<table>
+  <tr><td>Controller</td><td>Alexander Stelzer</td></tr>
+  <tr><td>Address</td><td>Hauptstraße, 7201 Neudörfl, Austria</td></tr>
+  <tr><td>Email</td><td><a href="mailto:a.stelzer7@icloud.com">a.stelzer7@icloud.com</a></td></tr>
+</table>
+<p>For any question about your data, write to the address above. You will receive a
+reply within 30 days, as required by Article 12 GDPR.</p>
+
+<h2>2. The short version</h2>
+<div class="callout">
+  <p>Your blood test results never leave your device. Everything else is stored only
+  if you create an account, lives on a server in Frankfurt, is never sold, never
+  shared with advertisers, and is deleted completely when you delete your account.</p>
+</div>
+
+<h2>3. Using the app without an account</h2>
+<p>The app works fully without signing up. In that case <strong>all data stays in
+your browser's local storage on your device</strong>. Nothing is transmitted anywhere,
+and no personal data is processed by the controller at all.</p>
+<p>Clearing your browser data or deleting the app removes it permanently. Use the
+built-in backup export if you want a copy.</p>
+
+<h2>4. What is stored when you do create an account</h2>
+
+<h3>Account data</h3>
+<p>Your email address and a hashed password. Passwords are hashed by Supabase and
+cannot be read by anyone, including the controller.</p>
+
+<h3>Application data</h3>
+<ul>
+  <li>Routines, supplement schedules and tasks you create</li>
+  <li>Which items you complete each day, and streak counts</li>
+  <li>Calendar subscription addresses and display settings</li>
+  <li>Your display name and which sections of the app you enable</li>
+</ul>
+
+<h3>Health and activity data</h3>
+<p>Only if you connect a source yourself:</p>
+<ul>
+  <li><strong>Apple Health</strong> — daily step count and exercise minutes, sent by
+      a Shortcut you install and control. No other health category is read.</li>
+  <li><strong>Whoop</strong> — sleep and recovery metrics, retrieved with the access
+      you grant during the Whoop authorisation step.</li>
+</ul>
+
+<h3>Blood panels — stored on your device only</h3>
+<div class="callout">
+  <p>Laboratory reports you import are parsed <strong>in your browser</strong> and
+  saved only in local storage. The PDF is never uploaded, and the extracted values
+  are excluded from cloud synchronisation by default. An opt-in setting exists for
+  the operator's own account; if you enable it, the values are stored alongside your
+  other data and you can disable it again, which deletes them from the server.</p>
+</div>
+
+<h2>5. Legal basis</h2>
+<table>
+  <tr><th>Data</th><th>Basis</th></tr>
+  <tr><td>Account and app data</td>
+      <td>Consent — Article 6(1)(a) GDPR, given when you create an account</td></tr>
+  <tr><td>Health and activity data</td>
+      <td>Explicit consent — Article 9(2)(a) GDPR, given separately when you connect
+          a source</td></tr>
+</table>
+<p>You may withdraw consent at any time by disconnecting a source or deleting your
+account. Withdrawal does not affect processing that already took place.</p>
+
+<h2>6. Where your data is stored</h2>
+<table>
+  <tr><th>Processor</th><th>Purpose</th><th>Location</th></tr>
+  <tr><td>Supabase</td><td>Database and authentication</td><td>Frankfurt, Germany (EU)</td></tr>
+  <tr><td>Cloudflare</td><td>Proxy that fetches your calendar feed</td><td>Global edge network</td></tr>
+  <tr><td>GitHub Pages</td><td>Serves the application files</td><td>Global CDN</td></tr>
+</table>
+<p>Your data is held in the EU. GitHub Pages and Cloudflare deliver the application
+itself and process only technical connection data such as IP addresses, which the
+controller does not collect or retain.</p>
+<p>The calendar proxy passes your feed through without storing it. Note that a
+calendar subscription address grants read access to that calendar to anyone holding
+it; keep it private.</p>
+
+<h2>7. What is not done</h2>
+<ul>
+  <li>No advertising, and no data sold or shared with advertisers</li>
+  <li>No analytics, tracking pixels or third-party cookies</li>
+  <li>No profiling and no automated decision-making</li>
+  <li>No transfer to third parties beyond the processors listed above</li>
+</ul>
+
+<h2>8. How long data is kept</h2>
+<p>Until you delete it. Deleting your account removes every record immediately and
+irreversibly; deletion cascades across all tables. There are no separate backups
+from which data could be restored, so export first if you want a copy.</p>
+<p>Accounts inactive for more than 24 months may be deleted after notice by email.</p>
+
+<h2>9. Your rights</h2>
+<p>Under the GDPR you may request access, rectification, erasure, restriction,
+portability, and object to processing. In practice:</p>
+<ul>
+  <li><strong>Access and portability</strong> — the backup export in the app produces
+      a complete JSON file of everything held about you</li>
+  <li><strong>Erasure</strong> — Delete account, in the account panel</li>
+  <li><strong>Withdrawal</strong> — disconnect Apple Health or Whoop at any time</li>
+</ul>
+<p>You may also lodge a complaint with the Austrian Data Protection Authority
+(Datenschutzbehörde), Barichgasse 40–42, 1030 Vienna,
+<a href="https://www.dsb.gv.at">dsb.gv.at</a>.</p>
+
+<h2>10. Security</h2>
+<p>All traffic is encrypted in transit. Access is enforced at the database level by
+row-level security, so one account cannot read another's records even if the
+application itself were flawed. Device tokens used by the Apple Health Shortcut are
+stored only as hashes and can be revoked individually.</p>
+<p>No system is perfectly secure. In the event of a breach affecting your data, you
+will be informed without undue delay, as required by Article 34 GDPR.</p>
+
+<h2>11. Children</h2>
+<p>This application is not intended for anyone under 16, and accounts should not be
+created for them.</p>
+
+<h2>12. Changes</h2>
+<p>If this policy changes materially, you will be asked to review and accept the new
+version the next time you sign in. The version number and date above indicate the
+current text.</p>
+
+<footer>
+  ZEUS Protocol · a personal project, not a commercial service ·
+  <a href="https://sax7sunny.github.io/Zeus-Protocol/">Back to the app</a>
+</footer>
+
+</body>
+</html>

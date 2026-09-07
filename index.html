@@ -372,15 +372,11 @@
     background:var(--surface); border:1px solid var(--line); }
   .biotop { display:flex; align-items:center; justify-content:space-between; gap:12px; }
   .brandname { font-size:17px; font-weight:800; letter-spacing:.02em; }
-  .brand-whoop { color:#00F19F; }
-  .brand-health { color:#FF2D55; }
   .brand-eight { color:#FFFFFF; letter-spacing:.06em; }
   .connect-btn { flex-shrink:0; padding:9px 15px; border-radius:9px; border:1px solid var(--line);
     background:var(--bg); color:var(--muted); font-size:13px; font-weight:700; }
   .biostatus { font-size:12.5px; color:var(--muted); line-height:1.5; margin-top:9px; }
   .biostatus b { color:var(--ink); }
-  .beta-pill { font-size:10px; font-weight:800; letter-spacing:.1em; text-transform:uppercase;
-    color:var(--amber); background:rgba(255,194,71,.15); padding:3px 7px; border-radius:5px; }
 
   .upload-zone { margin:16px 6px 10px; padding:20px 18px; border:1.5px dashed rgba(95,216,245,.45);
     border-radius:14px; text-align:center; background:rgba(95,216,245,.06); }
@@ -484,6 +480,10 @@
   .act-stat { flex:1; min-width:0; }
   .act-today { display:flex; gap:18px; padding:2px 6px 14px; font-size:13px; color:var(--muted); }
   .act-today b { font-family:var(--mono); color:var(--ink); font-weight:700; }
+  .whoop-rings { display:flex; align-items:center; gap:22px; margin:8px 0 14px; flex-wrap:wrap; }
+  .whoop-ring-tile { text-align:center; }
+  .whoop-ring-label { font-size:11.5px; color:var(--muted); margin-top:4px; }
+  .whoop-strain-tile { flex:1; min-width:70px; }
   .md-row { display:flex; align-items:baseline; gap:10px; padding:9px 0;
     border-bottom:1px solid var(--line); font-size:13px; }
   .md-date { flex:1; color:var(--ink); }
@@ -964,7 +964,7 @@
   .progress-track, .eat-track, .field input, .field select, .gid-input,
   .compare-sel, .sheet, .desc-panel, .md-point, .wait-note, .note,
   .upload-zone, .gcard, .biocard, .dose, .block-time,
-  .streak-pill, .beta-pill, .undo-toast { border-radius:0; }
+  .streak-pill, .undo-toast { border-radius:0; }
 
   /* ============ Desktop (>=900px): three-column shell ============
      Everything below is scoped to this query. Nothing above changes, so
@@ -1162,6 +1162,7 @@
       <button class="tab" id="tab-tasks" onclick="setTab('tasks')">Tasks</button>
       <button class="tab" id="tab-cal" onclick="setTab('cal')">Calendar</button>
       <button class="tab" id="tab-bio" onclick="setTab('bio')">Bio</button>
+      <button class="tab" id="tab-integrations" onclick="setTab('integrations')">Integrations</button>
     </div>
   </div>
 </header>
@@ -1397,12 +1398,12 @@ let seenDefaults=[];   // ids already reconciled against saved data
    profiles on top of that — see the CLOUD SYNC section below.
    ====================================================================== */
 let DISPLAY_NAME='';
-const SECTION_KEYS=['agenda','routine','supps','tasks','cal','bio'];
+const SECTION_KEYS=['agenda','routine','supps','tasks','cal','bio','integrations'];
 // Merges onto the all-on default rather than trusting a saved/remote value
 // outright, and never allows every key to end up false — an empty tab bar
 // is not a valid state a backup or a profile row should be able to force.
 function normalizeSections(raw){
-  const merged={agenda:true,routine:true,supps:true,tasks:true,cal:true,bio:true,
+  const merged={agenda:true,routine:true,supps:true,tasks:true,cal:true,bio:true,integrations:true,
     ...(raw&&typeof raw==='object'?raw:{})};
   if(!SECTION_KEYS.some(k=>merged[k])) merged.agenda=true;
   return merged;
@@ -2108,7 +2109,7 @@ document.getElementById('backupInput').addEventListener('change',e=>{
 let PANELS=[];          // {id,date,name,label,values:[{key,section,label,displayName,v,text,qual,unit,refLo,refHi}]}
 let bioNote='', bioBusy=false, bioMsg='';
 // Bio opens on blood pressure; the two heavier sections start folded away.
-let bioUploadOpen=false, bioIntegrationsOpen=false;
+let bioUploadOpen=false;
 // null = fall back to the default pair (newest by date vs second newest)
 let cmpA=null, cmpB=null;
 
@@ -2780,15 +2781,17 @@ function setTab(t){
   SECTION_KEYS.forEach(x=>document.getElementById('tab-'+x).classList.toggle('active',x===t));
   document.getElementById('pageTitle').textContent =
     t==='agenda'?'Agenda':t==='routine'?'Daily Routine':t==='supps'?'Supplements':
-    t==='tasks'?'Tasks':t==='cal'?'Calendar':'Bio Analysis';
+    t==='tasks'?'Tasks':t==='cal'?'Calendar':t==='integrations'?'Integrations':'Bio Analysis';
   // Tasks are not day-scoped and deliberately excluded from the daily
   // percentage, so it hides the day nav and progress bar like cal/bio do.
-  const chromeless = (t==='cal'||t==='bio'||t==='tasks');
+  // Integrations has its own per-metric day selection (actSelectedDay),
+  // independent of the global day nav, same reasoning as bio.
+  const chromeless = (t==='cal'||t==='bio'||t==='tasks'||t==='integrations');
   // The right rail keeps the status block visible on every tab at desktop
   // width (it's a persistent sidebar there, not part of the day header).
   document.getElementById('progWrap').style.display = (chromeless&&!isDesktopLayout())?'none':'block';
   document.querySelector('.daynav').style.display = chromeless?'none':'flex';
-  document.querySelector('.fab').style.display = t==='bio'?'none':'block';
+  document.querySelector('.fab').style.display = (t==='bio'||t==='integrations')?'none':'block';
   window.scrollTo(0,0);
   const btn=document.getElementById('tab-'+t);
   if(btn&&btn.scrollIntoView) btn.scrollIntoView({inline:'center',block:'nearest'});
@@ -2909,7 +2912,8 @@ function render(){
   else if(activeTab==='supps') renderSupps(c);
   else if(activeTab==='tasks') renderTasks(c);
   else if(activeTab==='cal') renderCalendar(c);
-  else renderBio(c);
+  else if(activeTab==='bio') renderBio(c);
+  else renderIntegrations(c);
   renderProgress(); renderEatWindow(); renderRail(); renderArc(); saveAll();
   renderCloudConflict();
   renderConsentGate();
@@ -4336,6 +4340,8 @@ async function acctSignOut(){
   connLoaded=false; connLoading=false; connTokens=[];
   connNewLabel=''; connGenerating=false; connGeneratedPlaintext=null; connMsg='';
   METRICS={}; actSelectedDay=null;
+  whoopStatus=null; whoopStatusLoaded=false; whoopStatusLoading=false;
+  whoopSyncing=false; whoopMsg='';
   saveCloudMeta();
   render();
 }
@@ -4650,7 +4656,7 @@ function connectionsCardHTML(){
    collapse state) is independent of the sign-in card's, and a signed-out
    user finds it too. */
 let persOpen=false;
-const SECTION_LABELS={agenda:'Agenda',routine:'Routine',supps:'Supplements',tasks:'Tasks',cal:'Calendar',bio:'Bio'};
+const SECTION_LABELS={agenda:'Agenda',routine:'Routine',supps:'Supplements',tasks:'Tasks',cal:'Calendar',bio:'Bio',integrations:'Integrations'};
 function setDisplayName(v){
   DISPLAY_NAME=v.trim();
   applyHeaderBrand();
@@ -5306,6 +5312,18 @@ function activityFreshnessHTML(){
   const hh=String(d.getHours()).padStart(2,'0'), mm=String(d.getMinutes()).padStart(2,'0');
   return `<span style="color:var(--faint)">Synced ${hh}:${mm}</span>`;
 }
+// Shared with the Whoop card below via actSelectedDay: picking a day in
+// either card's chart or nav arrows moves both, so activity and recovery
+// for the same day sit side by side rather than needing two selections.
+function activityShiftDay(delta){
+  const days=activityDayRange();
+  const todayKey=key(new Date());
+  const cur=actSelectedDay&&days.includes(actSelectedDay)?actSelectedDay:todayKey;
+  const newIdx=days.indexOf(cur)+delta;
+  if(newIdx<0||newIdx>=days.length) return;
+  actSelectedDay=days[newIdx];
+  render();
+}
 function activitySectionHTML(){
   if(!cloudSession) return '';   // cloud-only by nature
   if(!Object.keys(METRICS).length) return '';   // nothing has ever synced
@@ -5325,12 +5343,168 @@ function activitySectionHTML(){
   }).join('');
 
   const charts=ACTIVITY_METRICS.map(m=>activityBarChartSVG(days,m)).join('');
+  const atStart=days.indexOf(selDay)<=0, atEnd=selDay===todayKey;
 
   return `<div class="gcard">
-    <div class="gtop"><span class="day-sep" style="padding:0">Activity</span>
-      <span style="flex:1"></span>${activityFreshnessHTML()}</div>
-    <div class="gsub">${esc(activityFmtDay(selDay))}${selDay===todayKey?' · today':''}</div>
+    <div class="gtop"><span class="gtitle">Apple Health</span>${activityFreshnessHTML()}</div>
+    <div class="gsub" style="display:flex;align-items:center;gap:8px">
+      <button class="ico edit" style="width:26px;height:26px;flex-shrink:0" ${atStart?'disabled':''}
+        onclick="activityShiftDay(-1)" title="Previous day">‹</button>
+      <span style="flex:1;text-align:center">${esc(activityFmtDay(selDay))}${selDay===todayKey?' · today':''}</span>
+      <button class="ico edit" style="width:26px;height:26px;flex-shrink:0" ${atEnd?'disabled':''}
+        onclick="activityShiftDay(1)" title="Next day">›</button>
+    </div>
     <div class="act-stats">${stats}</div>
+    ${charts}
+  </div>`;
+}
+
+/* ---------- WHOOP (ROADMAP.md 5.3) ----------
+   Recovery/sleep as rings, strain as a plain number (it has no "good"
+   direction the way a percentage does), 30-day trend bars reusing
+   activityBarChartSVG — it already reads via activityDataFor(), which
+   merges every source's fields for a day, so it works unchanged for
+   Whoop's field names too. whoop_tokens itself is never queried for
+   access_token/refresh_token here — connection status only, per that
+   table's comment in zeus-schema.sql. */
+let whoopStatus=null, whoopStatusLoaded=false, whoopStatusLoading=false;
+let whoopSyncing=false, whoopMsg='';
+const WHOOP_METRICS=[
+  {key:'recovery', label:'recovery %', color:'var(--moss)', get:d=>d.recovery_score},
+  {key:'strain',   label:'strain',     color:'var(--frost)', get:d=>d.strain},
+  {key:'sleep',    label:'sleep %',    color:'var(--amber)', get:d=>d.sleep_performance_percentage},
+];
+function recoveryColor(pct){ return pct>=67?'var(--moss)':pct>=34?'var(--amber)':'var(--rose)'; }
+function sleepColor(pct){ return pct>=85?'var(--moss)':pct>=60?'var(--amber)':'var(--rose)'; }
+// A plain outline + "—" when pct is null — a real 0% ring would read as
+// a genuine zero score, which "no data yet" is not the same thing as.
+function ringSVG(pct,color,size,strokeWidth){
+  size=size||96; strokeWidth=strokeWidth||10;
+  const r=(size-strokeWidth)/2, c=2*Math.PI*r;
+  if(pct==null){
+    return `<svg width="${size}" height="${size}" viewBox="0 0 ${size} ${size}">
+      <circle cx="${size/2}" cy="${size/2}" r="${r}" fill="none" stroke="var(--line)" stroke-width="${strokeWidth}"/>
+      <text x="${size/2}" y="${size/2+8}" text-anchor="middle" fill="var(--faint)" font-family="var(--mono)"
+        font-size="${Math.round(size*.22)}" font-weight="700">—</text>
+    </svg>`;
+  }
+  const clamped=Math.max(0,Math.min(100,pct)), dash=(clamped/100)*c;
+  return `<svg width="${size}" height="${size}" viewBox="0 0 ${size} ${size}">
+    <circle cx="${size/2}" cy="${size/2}" r="${r}" fill="none" stroke="var(--line)" stroke-width="${strokeWidth}"/>
+    <circle cx="${size/2}" cy="${size/2}" r="${r}" fill="none" stroke="${color}" stroke-width="${strokeWidth}"
+      stroke-linecap="round" stroke-dasharray="${dash.toFixed(1)} ${(c-dash).toFixed(1)}"
+      transform="rotate(-90 ${size/2} ${size/2})"/>
+    <text x="${size/2}" y="${size/2+8}" text-anchor="middle" fill="var(--ink)" font-family="var(--mono)"
+      font-size="${Math.round(size*.22)}" font-weight="700">${Math.round(clamped)}%</text>
+  </svg>`;
+}
+async function loadWhoopStatus(){
+  if(!cloudSession) { whoopStatus=null; return; }
+  try{
+    const sb=await getSbClient();
+    const {data,error}=await sb.from('whoop_tokens')
+      .select('connected_at,last_sync,whoop_user_id').eq('user_id',cloudSession.user.id).maybeSingle();
+    if(error) throw error;
+    whoopStatus=data||null;
+  }catch(e){
+    whoopMsg=e.message||whoopMsg;
+  }
+}
+async function whoopConnect(){
+  if(!cloudSession) return;
+  const sb=await getSbClient();
+  const {data}=await sb.auth.getSession();
+  if(!data.session) return;
+  window.location.href=SUPABASE_URL+'/functions/v1/whoop-auth?start=1&access_token='
+    +encodeURIComponent(data.session.access_token);
+}
+async function whoopSyncNow(){
+  if(!cloudSession||whoopSyncing) return;
+  whoopSyncing=true; whoopMsg=''; render();
+  try{
+    const sb=await getSbClient();
+    const {data,error}=await sb.functions.invoke('whoop-sync',{method:'POST'});
+    if(error) throw error;
+    if(data&&data.ok===false) throw new Error(data.error||'Sync failed.');
+    await loadWhoopStatus();
+    await cloudFetchMetrics(sb);
+  }catch(e){
+    whoopMsg=e.message||'Could not sync Whoop.';
+  }
+  whoopSyncing=false; render();
+}
+function whoopFreshnessHTML(){
+  if(!whoopStatus) return '';
+  if(!whoopStatus.last_sync) return `<span style="color:var(--amber)">Never synced</span>`;
+  const d=new Date(whoopStatus.last_sync);
+  const hoursAgo=(Date.now()-d.getTime())/3600000;
+  if(hoursAgo>36){
+    const days=Math.floor(hoursAgo/24);
+    return `<span style="color:var(--amber)">Last sync ${days<1?'today':days+' day'+(days===1?'':'s')+' ago'}</span>`;
+  }
+  const hh=String(d.getHours()).padStart(2,'0'), mm=String(d.getMinutes()).padStart(2,'0');
+  return `<span style="color:var(--faint)">Synced ${hh}:${mm}</span>`;
+}
+function whoopSectionHTML(){
+  if(!cloudSession) return '';
+  if(!whoopStatusLoaded&&!whoopStatusLoading){
+    whoopStatusLoading=true;
+    loadWhoopStatus().then(()=>{ whoopStatusLoading=false; whoopStatusLoaded=true; render(); });
+  }
+  if(!whoopStatusLoaded){
+    return `<div class="gcard"><div class="gtop"><span class="gtitle">Whoop</span></div>
+      <div class="gsub">Loading…</div></div>`;
+  }
+  if(!whoopStatus){
+    return `<div class="gcard">
+      <div class="gtop"><span class="gtitle">Whoop</span></div>
+      <div class="gsub">Recovery, strain, sleep and workouts. Not connected.</div>
+      ${whoopMsg?`<div class="gsub" style="color:var(--rose)">${esc(whoopMsg)}</div>`:''}
+      <button class="gbtn pri" onclick="whoopConnect()">Connect Whoop</button>
+    </div>`;
+  }
+
+  const days=activityDayRange();
+  const todayKey=key(new Date());
+  const selDay=actSelectedDay&&days.includes(actSelectedDay)?actSelectedDay:todayKey;
+  const entry=activityDataFor(selDay);
+  const d=entry?entry.data:{};
+  const recovery=d.recovery_score, sleep=d.sleep_performance_percentage, strain=d.strain;
+
+  const rings=`<div class="whoop-rings">
+    <div class="whoop-ring-tile">
+      ${ringSVG(recovery,recovery!=null?recoveryColor(recovery):null)}
+      <div class="whoop-ring-label">Recovery</div>
+    </div>
+    <div class="whoop-ring-tile">
+      ${ringSVG(sleep,sleep!=null?sleepColor(sleep):null)}
+      <div class="whoop-ring-label">Sleep</div>
+    </div>
+    <div class="whoop-strain-tile">
+      <div class="md-val">${strain!=null?strain.toFixed(1):'—'}</div>
+      <div class="md-unit">strain</div>
+    </div>
+  </div>`;
+
+  const charts=WHOOP_METRICS.map(m=>
+    `<div class="gsub" style="margin:14px 0 2px">${esc(m.label)} · 30 days</div>${activityBarChartSVG(days,m)}`
+  ).join('');
+  const atStart=days.indexOf(selDay)<=0, atEnd=selDay===todayKey;
+
+  return `<div class="gcard">
+    <div class="gtop"><span class="gtitle">Whoop</span>${whoopFreshnessHTML()}</div>
+    <div class="gsub" style="display:flex;align-items:center;gap:8px">
+      <button class="ico edit" style="width:26px;height:26px;flex-shrink:0" ${atStart?'disabled':''}
+        onclick="activityShiftDay(-1)" title="Previous day">‹</button>
+      <span style="flex:1;text-align:center">${esc(activityFmtDay(selDay))}${selDay===todayKey?' · today':''}</span>
+      <button class="ico edit" style="width:26px;height:26px;flex-shrink:0" ${atEnd?'disabled':''}
+        onclick="activityShiftDay(1)" title="Next day">›</button>
+    </div>
+    ${rings}
+    ${whoopMsg?`<div class="gsub" style="color:var(--rose)">${esc(whoopMsg)}</div>`:''}
+    <div class="backup-row" style="margin-top:2px">
+      <button class="opt-pill" ${whoopSyncing?'disabled':''} onclick="whoopSyncNow()">${whoopSyncing?'Syncing…':'Sync now'}</button>
+    </div>
     ${charts}
   </div>`;
 }
@@ -5511,33 +5685,23 @@ function bioFold(title,open,flag){
        </div></div>`;
 }
 
-function renderBio(c){
-  /* The folds are rendered FIRST but sit off-screen: blood pressure carries
-     id="scrollAnchor", and scrollToAnchor() puts it just under the header on
-     open, so the tab lands on blood pressure and the occasional controls are
-     a scroll up away rather than something to scroll past every time. Same
-     applies to the activity card below — it renders nothing at all when
-     signed out or before the first sync, so it costs nothing to sit above. */
+// Device connections and activity/recovery data moved to their own
+// Integrations tab (ROADMAP.md 5.3) — Bio keeps only what it's named
+// for: biomarker panels and blood pressure.
+function renderIntegrations(c){
+  c.insertAdjacentHTML('beforeend', whoopSectionHTML());
   c.insertAdjacentHTML('beforeend', activitySectionHTML());
-  c.insertAdjacentHTML('beforeend', bioFold('Integrations',bioIntegrationsOpen,'bioIntegrationsOpen'));
-  if(bioIntegrationsOpen){
-    c.insertAdjacentHTML('beforeend',
-      `<div class="note warn" style="margin:6px 6px 14px"><span class="beta-pill">Beta</span>
-        &nbsp;Device connections are scaffolded, not live yet. Biomarker upload works now.</div>`);
+  c.insertAdjacentHTML('beforeend', brandCard('eight','brand-eight','EIGHT SLEEP',
+    'Sleep stages, bed temperature, HRV. <b>Not connected.</b>',
+    'Eight Sleep publishes no official API. Only unofficial endpoints exist, which need your account password and can break without warning. I would rather wire this up properly than build on that.'));
+  c.querySelectorAll('[data-bio]').forEach(b=>b.onclick=()=>{ bioNote=bioNote===b.dataset.bio?'':b.dataset.bio; render(); });
+}
 
-    c.insertAdjacentHTML('beforeend', brandCard('whoop','brand-whoop','WHOOP',
-      'Recovery, strain, HRV and sleep. <b>Not connected.</b>',
-      'WHOOP has a real public API, but its OAuth flow needs a client secret, which cannot live in a web page. This needs a small backend — the same Cloudflare Worker you use for the calendar could do it.'));
-
-    c.insertAdjacentHTML('beforeend', brandCard('health','brand-health','Apple Health',
-      'Steps, workouts, heart rate, sleep. <b>Not connected.</b>',
-      'Apple gives web pages no access to HealthKit at all — it is native-only, with no exception. The realistic route is an Apple Shortcut that exports the metrics you want and hands them to this app.'));
-
-    c.insertAdjacentHTML('beforeend', brandCard('eight','brand-eight','EIGHT SLEEP',
-      'Sleep stages, bed temperature, HRV. <b>Not connected.</b>',
-      'Eight Sleep publishes no official API. Only unofficial endpoints exist, which need your account password and can break without warning. I would rather wire this up properly than build on that.'));
-  }
-
+function renderBio(c){
+  /* Blood pressure carries id="scrollAnchor", and scrollToAnchor() puts it
+     just under the header on open, so the tab lands there and the upload
+     fold is a scroll up away rather than something to scroll past every
+     time. */
   c.insertAdjacentHTML('beforeend', bioFold('Upload biomarkers',bioUploadOpen,'bioUploadOpen'));
   if(bioUploadOpen) c.insertAdjacentHTML('beforeend',
     `<div class="upload-zone" style="margin-top:0">

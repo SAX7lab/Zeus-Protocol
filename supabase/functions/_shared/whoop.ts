@@ -1,9 +1,9 @@
-// ZEUS Protocol — Whoop OAuth helpers (ROADMAP.md 5.3).
+// ZEUS Protocol — Whoop OAuth + API helpers (ROADMAP.md 5.3).
 //
-// Shared between whoop-auth (connect/callback, this phase) and the sync
-// function that reads sleep/recovery/cycles/workouts into metrics (the
-// next phase — not built yet). Nothing here logs a token, a code, or a
-// client secret; callers should stick to logging counts and outcomes.
+// Shared between whoop-auth (connect/callback) and whoop-sync (reads
+// cycles/recovery/sleep/workout into metrics). Nothing here logs a
+// token, a code, or a client secret; callers should stick to logging
+// counts and outcomes.
 
 import type { SupabaseClient } from "@supabase/supabase-js";
 
@@ -11,6 +11,27 @@ export const WHOOP_AUTH_URL = "https://api.prod.whoop.com/oauth/oauth2/auth";
 export const WHOOP_TOKEN_URL = "https://api.prod.whoop.com/oauth/oauth2/token";
 export const WHOOP_PROFILE_URL = "https://api.prod.whoop.com/developer/v1/user/profile/basic";
 export const WHOOP_SCOPES = "offline read:profile read:sleep read:recovery read:cycles read:workout";
+
+// v1 still serves /cycle but 404s on /recovery, /activity/sleep and
+// /activity/workout — confirmed against the live API on 2026-09-07.
+// v2 serves all four, so everything here uses v2 for consistency.
+export const WHOOP_API_V2 = "https://api.prod.whoop.com/developer/v2";
+
+// Whoop timestamps are UTC; timezone_offset is a "+HH:MM"/"-HH:MM"
+// string on cycle/sleep/workout records (not on recovery — recovery is
+// bucketed by its cycle's day instead, via cycle_id, in whoop-sync).
+// Returns a YYYY-MM-DD local-date string, matching metrics.day's format
+// and index.html's key(Date) convention.
+export function localDayFromISO(iso: string, timezoneOffset: string): string {
+  const sign = timezoneOffset.startsWith("-") ? -1 : 1;
+  const [oh, om] = timezoneOffset.slice(1).split(":").map(Number);
+  const offsetMs = sign * ((oh * 60 + om) * 60000);
+  const local = new Date(new Date(iso).getTime() + offsetMs);
+  const y = local.getUTCFullYear();
+  const m = String(local.getUTCMonth() + 1).padStart(2, "0");
+  const d = String(local.getUTCDate()).padStart(2, "0");
+  return `${y}-${m}-${d}`;
+}
 
 export interface WhoopTokenRow {
   user_id: string;

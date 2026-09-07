@@ -433,3 +433,17 @@ entrypoint = "./functions/whoop-auth/index.ts"
 # Specifies static files to be bundled with the function. Supports glob patterns.
 # For example, if you want to serve static HTML pages in your function:
 # static_files = [ "./functions/whoop-auth/*.html" ]
+
+[functions.whoop-sync]
+enabled = true
+# Unlike whoop-auth/ingest: this is called by the client's own supabase-js
+# instance (functions.invoke()), which already attaches a real Supabase
+# session JWT — no custom auth scheme needed here.
+verify_jwt = true
+import_map = "./functions/whoop-sync/deno.json"
+# Uncomment to specify a custom file path to the entrypoint.
+# Supported file extensions are: .ts, .js, .mjs, .jsx, .tsx
+entrypoint = "./functions/whoop-sync/index.ts"
+# Specifies static files to be bundled with the function. Supports glob patterns.
+# For example, if you want to serve static HTML pages in your function:
+# static_files = [ "./functions/whoop-sync/*.html" ]

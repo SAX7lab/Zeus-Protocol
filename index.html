@@ -483,7 +483,6 @@
   .whoop-rings { display:flex; align-items:center; gap:22px; margin:8px 0 14px; flex-wrap:wrap; }
   .whoop-ring-tile { text-align:center; }
   .whoop-ring-label { font-size:11.5px; color:var(--muted); margin-top:4px; }
-  .whoop-strain-tile { flex:1; min-width:70px; }
   .md-row { display:flex; align-items:baseline; gap:10px; padding:9px 0;
     border-bottom:1px solid var(--line); font-size:13px; }
   .md-date { flex:1; color:var(--ink); }
@@ -3026,7 +3025,8 @@ const NX_META={
   tasks: { items:nxTaskItems, tab:'tasks' },
   bio:   { tab:'bio', size:()=>PANELS.length },
   bp:    { tab:'bio', size:()=>BP.length },
-  cal:   { items:nxCalItems, tab:'cal', size:()=>SUBS.length }
+  cal:   { items:nxCalItems, tab:'cal', size:()=>SUBS.length },
+  integrations: { tab:'integrations' }
 };
 
 function nxDomains(){
@@ -3422,7 +3422,7 @@ function arcRenderDetail(){
     </div>`:''}
   </div>`;
 }
-const TAB_LABEL={routine:'Routine',supps:'Supps',tasks:'Tasks',cal:'Calendar',bio:'Bio'};
+const TAB_LABEL={routine:'Routine',supps:'Supps',tasks:'Tasks',cal:'Calendar',bio:'Bio',integrations:'Integrations'};
 
 /* ---- scheduled strip above the constellation ----
    Mobile overlay only — the desktop rail already has its own "Due today"
@@ -3962,6 +3962,29 @@ function systemsReport(){
       detail: evLbl+' · '+feeds,
       val: bad ? bad+' failing' : evLbl,
       state: bad?'warn':'ok'});
+  }
+
+  // Only present once something is actually connected — Whoop or Apple
+  // Health — same reasoning as the calendar row above: an unconnected
+  // domain is not a deviation to report on, it just doesn't exist yet.
+  // Reads whichever source(s) wrote into METRICS for this day; nothing
+  // here assumes it's Whoop specifically (see activityDataFor()).
+  if(cloudSession && (whoopStatus || Object.keys(METRICS).length)){
+    const entry=activityDataFor(key(viewDate));
+    const recovery=entry?entry.data.recovery_score:null;
+    const steps=entry?activityStepsFor(entry.data):null;
+    if(recovery!=null){
+      out.push({key:'integrations', label:'Integrations',
+        detail:'recovery '+recovery+'%', val:recovery+'%',
+        state: recovery>=67?'ok' : recovery>=34?'watch' : 'warn'});
+    } else if(whoopStatus){
+      out.push({key:'integrations', label:'Integrations',
+        detail:'no Whoop score yet', val:'—', state:'watch'});
+    } else {
+      out.push({key:'integrations', label:'Integrations',
+        detail: steps!=null?steps.toLocaleString('en-GB')+' steps':'no data yet',
+        val: steps!=null?steps.toLocaleString('en-GB'):'—', state:'ok'});
+    }
   }
   return out;
 }
@@ -5378,7 +5401,11 @@ function recoveryColor(pct){ return pct>=67?'var(--moss)':pct>=34?'var(--amber)'
 function sleepColor(pct){ return pct>=85?'var(--moss)':pct>=60?'var(--amber)':'var(--rose)'; }
 // A plain outline + "—" when pct is null — a real 0% ring would read as
 // a genuine zero score, which "no data yet" is not the same thing as.
-function ringSVG(pct,color,size,strokeWidth){
+// `pct` always drives how much of the ring is filled (0-100); `label`
+// overrides what's drawn in the middle for rings that aren't percentages
+// themselves — strain's ring fills by strain/21 (Whoop's own scale) but
+// shows the raw strain number, not that fill percentage.
+function ringSVG(pct,color,size,strokeWidth,label){
   size=size||96; strokeWidth=strokeWidth||10;
   const r=(size-strokeWidth)/2, c=2*Math.PI*r;
   if(pct==null){
@@ -5395,7 +5422,7 @@ function ringSVG(pct,color,size,strokeWidth){
       stroke-linecap="round" stroke-dasharray="${dash.toFixed(1)} ${(c-dash).toFixed(1)}"
       transform="rotate(-90 ${size/2} ${size/2})"/>
     <text x="${size/2}" y="${size/2+8}" text-anchor="middle" fill="var(--ink)" font-family="var(--mono)"
-      font-size="${Math.round(size*.22)}" font-weight="700">${Math.round(clamped)}%</text>
+      font-size="${Math.round(size*.22)}" font-weight="700">${label!=null?label:Math.round(clamped)+'%'}</text>
   </svg>`;
 }
 async function loadWhoopStatus(){
@@ -5471,18 +5498,22 @@ function whoopSectionHTML(){
   const d=entry?entry.data:{};
   const recovery=d.recovery_score, sleep=d.sleep_performance_percentage, strain=d.strain;
 
+  // Whoop's own strain scale tops out at 21 (not 0-100), so the ring fills
+  // by strain/21 but the label in the middle stays the raw strain number,
+  // same as the Whoop app — not the fill percentage.
+  const strainPct = strain!=null ? Math.min(100,(strain/21)*100) : null;
   const rings=`<div class="whoop-rings">
+    <div class="whoop-ring-tile">
+      ${ringSVG(sleep,sleep!=null?sleepColor(sleep):null)}
+      <div class="whoop-ring-label">Sleep</div>
+    </div>
     <div class="whoop-ring-tile">
       ${ringSVG(recovery,recovery!=null?recoveryColor(recovery):null)}
       <div class="whoop-ring-label">Recovery</div>
     </div>
     <div class="whoop-ring-tile">
-      ${ringSVG(sleep,sleep!=null?sleepColor(sleep):null)}
-      <div class="whoop-ring-label">Sleep</div>
-    </div>
-    <div class="whoop-strain-tile">
-      <div class="md-val">${strain!=null?strain.toFixed(1):'—'}</div>
-      <div class="md-unit">strain</div>
+      ${ringSVG(strainPct,'var(--frost)',null,null,strain!=null?strain.toFixed(1):null)}
+      <div class="whoop-ring-label">Strain</div>
     </div>
   </div>`;
 

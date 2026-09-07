@@ -4460,17 +4460,18 @@ function renderConsentGate(){
   ov.classList.add('open');
 }
 function accountCardHTML(){
+  if(!acctOpen){
+    const meta=cloudSession?esc(cloudSession.user.email||cloudEmail):'optional';
+    return `<div class="gcard cal-collapsed" onclick="acctToggleOpen()">
+      <div class="gtop"><span class="gtitle">Account &amp; cloud sync</span>
+        <span class="cal-collapsed-meta">${meta} ›</span></div>
+    </div>`;
+  }
   if(!cloudSession){
-    if(!acctOpen){
-      return `<div class="gcard cal-collapsed" onclick="acctToggleOpen()">
-        <div class="gtop"><span class="gtitle">Account &amp; cloud sync</span>
-          <span class="cal-collapsed-meta">optional ›</span></div>
-      </div>`;
-    }
     const isNotice=/created|check your email/i.test(acctMsg);
     return `<div class="gcard">
       <div class="gtop"><span class="gtitle">Account &amp; cloud sync</span>
-        <button class="ico edit" onclick="acctOpen=false;render()" title="Hide">︿</button></div>
+        <button class="ico edit" onclick="acctToggleOpen()" title="Hide">︿</button></div>
       <div class="gsub">Optional — sign in to mirror this device's data to the cloud and pick it up on another device. Local storage stays the real copy; nothing here changes how the app works signed out.</div>
       <input class="gid-input" id="acctEmail" type="email" autocomplete="email" placeholder="Email" value="${esc(acctEmailDraft)}" ${acctBusy?'disabled':''}>
       <input class="gid-input" id="acctPassword" type="password" autocomplete="current-password" placeholder="Password" ${acctBusy?'disabled':''}>
@@ -4494,7 +4495,8 @@ function accountCardHTML(){
       <button class="opt-pill off" onclick="acctDeleteToggle()">Delete account</button>
     </div>`;
   return `<div class="gcard">
-    <div class="gtop"><span class="gtitle">Account &amp; cloud sync</span></div>
+    <div class="gtop"><span class="gtitle">Account &amp; cloud sync</span>
+      <button class="ico edit" onclick="acctToggleOpen()" title="Hide">︿</button></div>
     <div class="gsub"><b>${esc(cloudSession.user.email||cloudEmail)}</b><br>
       <span class="cloud-dot ${st.cls}"></span>${esc(st.txt)}${cloudLastSyncedAt?' · last sync '+esc(new Date(cloudLastSyncedAt).toLocaleString()):''}</div>
     <div class="backup-row" style="margin-top:0">
@@ -4513,6 +4515,7 @@ function accountCardHTML(){
    presented token the same way to look it up); the plaintext exists
    only in connGeneratedPlaintext, in memory, never persisted, and is
    cleared the moment the user dismisses the one-time reveal. */
+let connOpen=false;
 let connLoaded=false, connLoading=false, connTokens=[];
 let connNewLabel='', connGenerating=false, connGeneratedPlaintext=null, connMsg='';
 
@@ -4607,6 +4610,12 @@ function connDismissGenerated(){
 }
 function connectionsCardHTML(){
   if(!cloudSession) return '';
+  if(!connOpen){
+    return `<div class="gcard cal-collapsed" onclick="connOpen=true;render()">
+      <div class="gtop"><span class="gtitle">Connections</span>
+        <span class="cal-collapsed-meta">›</span></div>
+    </div>`;
+  }
   if(!connLoaded&&!connLoading){
     connLoading=true;
     // Targeted refresh, not render(): this can resolve while someone is
@@ -4626,7 +4635,8 @@ function connectionsCardHTML(){
       <button class="gbtn pri" ${connGenerating?'disabled':''} onclick="connGenerateToken()">${connGenerating?'Generating…':'Generate Shortcut token'}</button>
     </div>`;
   return `<div class="gcard">
-    <div class="gtop"><span class="gtitle">Connections</span></div>
+    <div class="gtop"><span class="gtitle">Connections</span>
+      <button class="ico edit" onclick="connOpen=false;render()" title="Hide">︿</button></div>
     <div class="gsub">Long-lived tokens for the Apple Shortcut that sends Health data — a signed-in session expires in about an hour, too short for a daily automation.</div>
     ${genBlock}
     ${connMsg?`<div class="gsub" style="margin:10px 0 0;color:${/copied/i.test(connMsg)?'var(--moss)':'var(--rose)'}">${esc(connMsg)}</div>`:''}
@@ -4635,9 +4645,11 @@ function connectionsCardHTML(){
 }
 
 /* ---------- PERSONALISATION (ROADMAP.md 5.4) ----------
-   Not gated by acctOpen or cloudSession — display_name/SECTIONS work
-   fully offline, and always visible here rather than hidden behind the
-   sign-in card's own collapse, so a signed-out user finds it too. */
+   Collapsed under its own persOpen flag, not acctOpen or cloudSession —
+   display_name/SECTIONS work fully offline, so this card (and its
+   collapse state) is independent of the sign-in card's, and a signed-out
+   user finds it too. */
+let persOpen=false;
 const SECTION_LABELS={agenda:'Agenda',routine:'Routine',supps:'Supplements',tasks:'Tasks',cal:'Calendar',bio:'Bio'};
 function setDisplayName(v){
   DISPLAY_NAME=v.trim();
@@ -4654,6 +4666,12 @@ function setSection(k,on){
   render();
 }
 function personalisationCardHTML(){
+  if(!persOpen){
+    return `<div class="gcard cal-collapsed" onclick="persOpen=true;render()">
+      <div class="gtop"><span class="gtitle">Personalisation</span>
+        <span class="cal-collapsed-meta">›</span></div>
+    </div>`;
+  }
   const onCount=SECTION_KEYS.filter(k=>SECTIONS[k]).length;
   const rows=SECTION_KEYS.map(k=>{
     const on=!!SECTIONS[k];
@@ -4665,7 +4683,8 @@ function personalisationCardHTML(){
     </label>`;
   }).join('');
   return `<div class="gcard">
-    <div class="gtop"><span class="gtitle">Personalisation</span></div>
+    <div class="gtop"><span class="gtitle">Personalisation</span>
+      <button class="ico edit" onclick="persOpen=false;render()" title="Hide">︿</button></div>
     <div class="gsub">Your name shows in the header. Section switches decide which tabs appear — synced to your account when signed in, kept on this device otherwise.</div>
     <input class="gid-input" id="displayNameInput" placeholder="Your name (optional)" value="${esc(DISPLAY_NAME)}" onchange="setDisplayName(this.value)">
     <div class="section-toggle-list">${rows}</div>
@@ -4904,10 +4923,10 @@ function renderCalendar(c){
   // Same idea as Bio: the subscription and backup cards render first but the
   // view opens below them, on the calendar itself.
   c.insertAdjacentHTML('beforeend', subCardHTML());
-  c.insertAdjacentHTML('beforeend', accountCardHTML());
   c.insertAdjacentHTML('beforeend', connectionsCardHTML());
   c.insertAdjacentHTML('beforeend', personalisationCardHTML());
   c.insertAdjacentHTML('beforeend', calDataSectionHTML());
+  c.insertAdjacentHTML('beforeend', accountCardHTML());
 
   c.insertAdjacentHTML('beforeend',
     `<div class="cal-view-switch" id="scrollAnchor">

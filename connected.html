@@ -1,0 +1,88 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<meta name="color-scheme" content="dark">
+<meta name="theme-color" content="#060b10">
+<title>Whoop connected — ZEUS Protocol</title>
+<style>
+  /* Same tokens as index.html's Mark II palette — see the palette comment
+     there. Only the ones this page actually uses. Structure mirrors
+     confirmed.html; unlike that page, whoop-auth only ever redirects here
+     on success — a failed connection gets its own error page from the
+     Edge Function itself, so there is no fail state to toggle here. */
+  :root {
+    color-scheme: dark;
+    --bg:#060b10; --surface:#0d1822; --ink:#d6e9f2;
+    --muted:rgba(214,233,242,0.62);
+    --line:rgba(95,216,245,0.20);
+    --frost:#5fd8f5; --frost-soft:rgba(95,216,245,0.16);
+    --moss:#4fe6b0;
+    --glow:0 0 14px rgba(95,216,245,0.34);
+    --glow-soft:0 0 10px rgba(95,216,245,0.22);
+    --notch:9px;
+  }
+  * { margin:0; padding:0; box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
+  html { background-color:#060b10; background-color:var(--bg); min-height:100%; }
+  html,body { background-color:#060b10; background-color:var(--bg);
+    color:#d6e9f2; color:var(--ink); }
+  body {
+    min-height:100vh; min-height:100dvh;
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
+    display:flex; align-items:center; justify-content:center;
+    padding:calc(28px + env(safe-area-inset-top)) 24px calc(28px + env(safe-area-inset-bottom));
+    -webkit-text-size-adjust:100%;
+  }
+  .wrap { width:100%; max-width:380px; text-align:center; }
+
+  .logo {
+    display:inline-block;
+    font-family:Georgia,"Times New Roman",serif;
+    font-size:23px; font-weight:700; letter-spacing:.10em;
+    color:var(--frost); text-shadow:var(--glow-soft);
+    padding:8px 13px 7px; background:var(--surface);
+    border:1px solid rgba(95,216,245,.38);
+    border-radius:0;
+    clip-path:polygon(var(--notch) 0, 100% 0, 100% calc(100% - var(--notch)),
+                      calc(100% - var(--notch)) 100%, 0 100%, 0 var(--notch));
+    margin-bottom:44px;
+  }
+
+  .icon-badge {
+    width:64px; height:64px; border-radius:50%;
+    display:flex; align-items:center; justify-content:center;
+    margin:0 auto 22px;
+    background:var(--moss); color:var(--bg);
+    font-size:30px; font-weight:800; line-height:1;
+    box-shadow:var(--glow);
+  }
+
+  h1 { font-family:Georgia,"Times New Roman",serif; font-size:25px; font-weight:600;
+    line-height:1.25; letter-spacing:-.01em; }
+
+  .sub { margin-top:10px; font-size:15px; color:var(--muted); line-height:1.55; }
+
+  .cta {
+    display:inline-block; margin-top:30px;
+    padding:15px 30px;
+    background:var(--frost); color:var(--bg);
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
+    font-size:15px; font-weight:700; text-decoration:none;
+    border-radius:0;
+    clip-path:polygon(var(--notch) 0, 100% 0, 100% calc(100% - var(--notch)),
+                      calc(100% - var(--notch)) 100%, 0 100%, 0 var(--notch));
+  }
+</style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="logo">Z&#931;VS</div>
+
+    <div class="icon-badge">&#10003;</div>
+    <h1>Whoop connected</h1>
+    <p class="sub">Sleep, recovery, cycles and workouts will start appearing once syncing is built.</p>
+    <a class="cta" href="https://sax7sunny.github.io/Zeus-Protocol/">Open ZEUS Protocol</a>
+  </div>
+</body>
+</html>

@@ -159,3 +159,36 @@ create policy "own device tokens" on device_tokens
 select tablename, rowsecurity
 from pg_tables
 where schemaname = 'public' and tablename in ('metrics','device_tokens');
+
+-- ============================================================
+-- Whoop OAuth tokens (ROADMAP.md 5.3). Written only by the whoop-auth
+-- Edge Function (service role) — see supabase/functions/whoop-auth.
+-- ============================================================
+
+-- One row per user. access_token/refresh_token are live Whoop API
+-- credentials. RLS below only scopes ROWS to their owner, same as every
+-- other table here — Postgres RLS cannot hide individual COLUMNS, so the
+-- app must never select access_token or refresh_token, only connection
+-- status (e.g. `connected_at is not null`). That is enforced at the
+-- query layer in the client, not by anything in this schema: never add
+-- a `select('access_token')` (or `select('*')`) against this table from
+-- index.html.
+create table if not exists whoop_tokens (
+  user_id       uuid        primary key references auth.users on delete cascade,
+  access_token  text        not null,
+  refresh_token text        not null,
+  expires_at    timestamptz not null,
+  whoop_user_id text,
+  connected_at  timestamptz not null default now(),
+  last_sync     timestamptz
+);
+
+alter table whoop_tokens enable row level security;
+
+drop policy if exists "own whoop tokens" on whoop_tokens;
+create policy "own whoop tokens" on whoop_tokens
+  for all using (auth.uid() = user_id) with check (auth.uid() = user_id);
+
+select tablename, rowsecurity
+from pg_tables
+where schemaname = 'public' and tablename = 'whoop_tokens';

@@ -1,14 +1,14 @@
 // ZEUS Protocol — Whoop data sync, every connected account (ROADMAP.md 5.3).
 //
 // The scheduled counterpart to whoop-sync: no user session exists in a
-// cron job, so this authenticates the CALLER (not a per-user JWT) by
-// requiring the service-role key itself as the bearer token, compared
-// constant-time. Whoever holds that key already has full database
-// access regardless of this function, so this adds no new exposure —
-// it just means only the GitHub Actions workflow that has it as a
-// secret (whoop-sync.yml, same pattern as keep-alive.yml) can trigger a
-// sync for every user at once. verify_jwt is off (supabase/config.toml)
-// since there is no Supabase JWT involved in this path at all.
+// cron job, so this authenticates the CALLER (not a per-user JWT) with a
+// dedicated CRON_SECRET (set via `supabase secrets set`), compared
+// constant-time — deliberately NOT the service-role key itself, so a
+// leaked cron secret can only trigger a Whoop sync, not read the whole
+// database. Only the GitHub Actions workflow that holds it as a secret
+// (whoop-sync.yml, same pattern as keep-alive.yml) can trigger a sync for
+// every user at once. verify_jwt is off (supabase/config.toml) since
+// there is no Supabase JWT involved in this path at all.
 //
 // Iterates whoop_tokens sequentially (not in parallel) — deliberately
 // gentle on Whoop's per-account rate limit, and there's no user waiting
@@ -36,13 +36,18 @@ Deno.serve(async (req: Request) => {
   const WHOOP_CLIENT_SECRET = Deno.env.get("WHOOP_CLIENT_SECRET");
   const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
   const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+  const CRON_SECRET = Deno.env.get("CRON_SECRET");
   if (!WHOOP_CLIENT_ID || !WHOOP_CLIENT_SECRET) {
     console.error("whoop-sync-all: WHOOP_CLIENT_ID/WHOOP_CLIENT_SECRET not configured");
     return json({ ok: false, error: "Server is not configured for Whoop yet." }, 500);
   }
+  if (!CRON_SECRET) {
+    console.error("whoop-sync-all: CRON_SECRET not configured");
+    return json({ ok: false, error: "Server is not configured for scheduled sync yet." }, 500);
+  }
 
   const presented = (req.headers.get("Authorization") || "").replace(/^Bearer\s+/i, "");
-  if (!presented || !timingSafeEqual(presented, SUPABASE_SERVICE_ROLE_KEY)) {
+  if (!presented || !timingSafeEqual(presented, CRON_SECRET)) {
     console.log("whoop-sync-all: rejected — bad or missing bearer");
     return json({ ok: false, error: "Unauthorized." }, 401);
   }

@@ -6,10 +6,12 @@ name: Whoop sync (all accounts)
 # note this drifts an hour off local time during CET (winter, UTC+1); revisit
 # the cron lines if that matters.
 #
-# Auth: whoop-sync-all treats the Supabase service-role key itself as the
-# bearer token (see supabase/functions/whoop-sync-all/index.ts for why that's
-# safe). Store it as the SUPABASE_SERVICE_ROLE_KEY secret below — same
-# Settings -> Secrets and variables -> Actions as SUPABASE_URL.
+# Auth: whoop-sync-all checks the bearer token against a dedicated
+# CRON_SECRET (set on the Supabase project via `supabase secrets set`,
+# separate from the service-role key so a leaked cron secret can only
+# trigger a Whoop sync, not read the whole database). Store the same value
+# here as the CRON_SECRET repo secret — same Settings -> Secrets and
+# variables -> Actions as SUPABASE_URL.
 
 on:
   schedule:
@@ -26,7 +28,7 @@ jobs:
           call() {
             curl -s -o /tmp/out.json -w '%{http_code}' \
               -X POST "${{ secrets.SUPABASE_URL }}/functions/v1/whoop-sync-all" \
-              -H "Authorization: Bearer ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}" \
+              -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}" \
               -H "Content-Type: application/json"
           }
           code=$(call)
@@ -40,6 +42,6 @@ jobs:
             cat /tmp/out.json
           fi
           if [ "$code" != "200" ]; then
-            echo "Whoop sync failed — project may be paused, or the service-role secret is wrong/missing."
+            echo "Whoop sync failed — project may be paused, or CRON_SECRET is wrong/missing."
             exit 1
           fi

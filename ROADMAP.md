@@ -132,19 +132,23 @@ fixed by bucketing cycles and sleep on `created_at` instead. `workout`
 records are untouched — they happen during the day, so `start` was
 already the right day for them.
 
-**Scheduled sync deployed (2026-09-07).** The sync body moved out of
-`whoop-sync/index.ts` into `syncWhoopUser()` in
+**Scheduled sync deployed and verified (2026-09-07).** The sync body moved
+out of `whoop-sync/index.ts` into `syncWhoopUser()` in
 `supabase/functions/_shared/whoop.ts`, shared by two Edge Functions:
 `whoop-sync` (one user, the caller's own JWT — unchanged contract, still
 what the "Sync now" button calls) and the new `whoop-sync-all` (every
-connected account, service-role-authenticated — whoever holds that key
-already has full DB access, so treating it as the bearer token adds no
-exposure, it just means only something holding it as a secret can trigger
-a sync for everyone at once). `.github/workflows/whoop-sync.yml` calls
-`whoop-sync-all` on a cron at 05:00 and 19:00 UTC (~7am/9pm CEST — revisit
-the cron lines once CET/winter DST matters), authenticated with a new
-`SUPABASE_SERVICE_ROLE_KEY` GitHub Actions secret, same pattern as
-`keep-alive.yml`'s wake-a-paused-project retry.
+connected account). `whoop-sync-all` authenticates the caller against a
+dedicated `CRON_SECRET` (random, `supabase secrets set`) rather than the
+service-role key — tried that first, but this project has both legacy JWT
+and newer-format API keys and the value Edge Functions see at runtime
+matched neither candidate fetched via the CLI; a purpose-built secret
+sidesteps that and is better scoped anyway, since a leaked cron secret can
+only trigger a sync, not read the database. `.github/workflows/whoop-sync.yml`
+calls `whoop-sync-all` on a cron at 05:00 and 19:00 UTC (~7am/9pm CEST —
+revisit the cron lines once CET/winter DST matters), authenticated with a
+`CRON_SECRET` GitHub Actions secret holding the same value, same
+retry-a-paused-project pattern as `keep-alive.yml`. Verified via
+`workflow_dispatch`: `{"ok":true,"accounts":1,"synced":1,"failed":0,"written":25}`.
 
 The app's Integrations tab (new: a 7th entry in `SECTION_KEYS`, its own
 tab button, collapsible in Personalisation like every other section)

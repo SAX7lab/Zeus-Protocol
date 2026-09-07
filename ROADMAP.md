@@ -4,13 +4,16 @@
 
 **Phase 5 — backend, accounts, integrations (current), as of 2026-09-07.**
 5.1 (Supabase accounts with local-first sync), 5.2 (GDPR consent gating) and
-5.4 (per-user personalisation) are deployed and working. **5.3 is in
-progress:** Apple Health's `ingest` Edge Function, device-token management
-(Connections panel), and reading metrics back into the app are deployed
-and verified; Whoop's OAuth connect flow (`whoop-auth`, `whoop_tokens`,
-`connected.html`) is deployed and verified too, but does not sync data
-yet. Still open: the actual Apple Shortcut itself running on-device, and
-Whoop's data sync; Eight Sleep stays deferred.
+5.4 (per-user personalisation) are deployed and working. **5.3 is mostly
+done:** Apple Health (`ingest`, device tokens) and Whoop (OAuth connect +
+`whoop-sync` data sync) both write into `metrics`, and the app has a real
+Integrations tab — Whoop-style rings for recovery/sleep, strain, 30-day
+trend charts, real Connect/Sync actions — moved out of Bio, which now
+holds only biomarker panels and blood pressure. Verified end-to-end
+against the operator's own connected Whoop account. Still open: the
+actual Apple Shortcut running on-device (data only arrives when it's
+manually triggered so far) and scheduling whoop-sync to run on its own
+instead of only on demand; Eight Sleep stays deferred.
 
 **Phase 6** exists as a later option, not a commitment: packaging the web app
 properly, from PWA polish up to a native shell. Only 6.1 is a given; anything
@@ -59,7 +62,7 @@ are scoped per user, and cross-user writes are rejected.
 | Source | Path | Notes |
 |---|---|---|
 | **Apple Health** | Shortcuts automation → POST to Edge Function | Only viable route; HealthKit has no web API. Each user installs the Shortcut once. Priority. Ingest side and the read-back into the app are **deployed and verified 2026-09-05/07** — see below. Still open: the Shortcut itself, running on-device. |
-| **Whoop** | OAuth 2.0 authorization code via Edge Function | Public API exists. Client secret lives server-side; function handles token refresh. Connect flow **deployed and verified 2026-09-07** — see below. Still open: the actual data sync into `metrics`. |
+| **Whoop** | OAuth 2.0 authorization code via Edge Function | Public API exists. Client secret lives server-side; function handles token refresh. Connect flow and data sync **deployed and verified 2026-09-07** — see below. Still open: scheduling the sync to run on its own. |
 | **Eight Sleep** | Deferred | No official API. Unofficial endpoints need account credentials — not acceptable for other people's accounts. Self-use only, if at all. |
 
 Store fetched metrics per user and per day, keyed by source, so the agenda and
@@ -98,20 +101,47 @@ the table's comment is explicit that the client must never select
 a signed, timestamped state (HMAC-SHA256 keyed on `WHOOP_CLIENT_SECRET`,
 rejected past 10 minutes); the callback verifies that state, exchanges
 the code, stores the tokens with the service-role key, and 302s to
-`connected.html`. `supabase/functions/_shared/whoop.ts` also has
-`ensureFreshWhoopToken()` ready for the sync function to import — refreshes
-within 5 minutes of expiry and persists Whoop's rotated refresh token
-every time — but nothing calls it yet; **data sync is the next step.**
-Verified against a throwaway test account: a real `?start=1` call produced
-a correctly-formed Whoop authorize redirect, and its state round-tripped
-correctly through the callback path.
+`connected.html`. `supabase/functions/_shared/whoop.ts` has
+`ensureFreshWhoopToken()` — refreshes within 5 minutes of expiry and
+persists Whoop's rotated refresh token every time.
+
+**Data sync deployed and verified (2026-09-07).** `whoop-sync`
+(`supabase/functions/whoop-sync`, `verify_jwt = true` — called by the
+client's own authenticated supabase-js instance, unlike whoop-auth's
+custom scheme) pulls the last 30 days of cycle/recovery/sleep/workout
+from Whoop's v2 API (v1 404s on everything but `/cycle`) and merges them
+into `metrics` with `source='whoop'` — the same table Apple Health
+writes to, so nothing downstream assumes either source. Found and fixed
+mid-build against the operator's real connected account: Whoop can hand
+back a `next_token` that doesn't advance on a single-page result, and the
+original pagination loop kept re-fetching that page until its cap,
+duplicating every workout on it exactly 20x (every stored count was a
+multiple of 20 — that's how it was caught). Fixed by also stopping when
+the token doesn't change or a page returns fewer records than requested;
+re-running the sync self-healed the affected rows via the upsert.
+
+The app's Integrations tab (new: a 7th entry in `SECTION_KEYS`, its own
+tab button, collapsible in Personalisation like every other section)
+replaces the old inert "Connect" placeholders under Bio with a real
+dashboard: Whoop as circular recovery/sleep rings (moss/amber/rose by
+band, a flat "—" rather than a misleading 0% ring when a day has no
+score yet — this morning's cycle, for instance) plus a plain strain
+number and 30-day trend bars; Apple Health's card (moved from Bio,
+gained prev/next day navigation arrows); Eight Sleep, still just the
+explanatory not-connected note. Bio now holds only biomarker panels and
+blood pressure. Verified against the operator's real, currently-connected
+Whoop account: real rings render real recovery/sleep/strain values for
+a day that has them, correctly read "—" for today's still-unscored cycle,
+and the dashboard is reachable through a real sign-in that persisted
+across a reload of the live GitHub Pages deployment.
 
 ### 5.4 Personalisation
 
 - `display_name` in the profile. Header shows **"Mike's Protocol"** instead of
   "ZEUS Protocol"; fall back to "ZEUS Protocol" when unset.
-- Per-user section toggles: each tab (Agenda, Routine, Supplements, Calendar,
-  Bio) can be switched off and disappears from the tab bar.
+- Per-user section toggles: each tab (Agenda, Routine, Supplements, Tasks,
+  Calendar, Bio, Integrations) can be switched off and disappears from the
+  tab bar; at least one must stay on.
 - Bio tab specifically: off by default for new users, since most will not
   upload lab reports.
 - Defaults: new accounts start from `DEFAULT_ROUTINES` / `DEFAULT_SUPPS`, then

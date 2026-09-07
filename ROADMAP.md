@@ -5,11 +5,12 @@
 **Phase 5 — backend, accounts, integrations (current), as of 2026-09-07.**
 5.1 (Supabase accounts with local-first sync), 5.2 (GDPR consent gating) and
 5.4 (per-user personalisation) are deployed and working. **5.3 is in
-progress:** the `ingest` Edge Function, device-token management
-(Connections panel), and reading metrics back into the app (Bio's Activity
-card, the Agenda's steps/workout-minutes line) are all deployed and
-verified end-to-end. Still open: the actual Apple Shortcut itself running
-on-device, and Whoop; Eight Sleep stays deferred.
+progress:** Apple Health's `ingest` Edge Function, device-token management
+(Connections panel), and reading metrics back into the app are deployed
+and verified; Whoop's OAuth connect flow (`whoop-auth`, `whoop_tokens`,
+`connected.html`) is deployed and verified too, but does not sync data
+yet. Still open: the actual Apple Shortcut itself running on-device, and
+Whoop's data sync; Eight Sleep stays deferred.
 
 **Phase 6** exists as a later option, not a commitment: packaging the web app
 properly, from PWA polish up to a native shell. Only 6.1 is a given; anything
@@ -58,7 +59,7 @@ are scoped per user, and cross-user writes are rejected.
 | Source | Path | Notes |
 |---|---|---|
 | **Apple Health** | Shortcuts automation → POST to Edge Function | Only viable route; HealthKit has no web API. Each user installs the Shortcut once. Priority. Ingest side and the read-back into the app are **deployed and verified 2026-09-05/07** — see below. Still open: the Shortcut itself, running on-device. |
-| **Whoop** | OAuth 2.0 authorization code via Edge Function | Public API exists. Client secret lives server-side; function handles token refresh. Not started. |
+| **Whoop** | OAuth 2.0 authorization code via Edge Function | Public API exists. Client secret lives server-side; function handles token refresh. Connect flow **deployed and verified 2026-09-07** — see below. Still open: the actual data sync into `metrics`. |
 | **Eight Sleep** | Deferred | No official API. Unofficial endpoints need account credentials — not acceptable for other people's accounts. Self-use only, if at all. |
 
 Store fetched metrics per user and per day, keyed by source, so the agenda and
@@ -87,6 +88,23 @@ visible); the Agenda gets a compact steps/workout-minutes line, today
 only. Nothing assumes `source === 'apple_health'` — fields are merged
 across whatever sources exist for a day, so Whoop only has to start
 writing to the same table.
+
+**Whoop connect flow deployed and verified (2026-09-07).** `whoop_tokens`
+(schema in `zeus-schema.sql`, one row per user, RLS-scoped to its owner —
+the table's comment is explicit that the client must never select
+`access_token`/`refresh_token`, only connection status) and the
+`whoop-auth` Edge Function (`supabase/functions/whoop-auth`) are live.
+`?start=1&access_token=<jwt>` validates the caller and 302s to Whoop with
+a signed, timestamped state (HMAC-SHA256 keyed on `WHOOP_CLIENT_SECRET`,
+rejected past 10 minutes); the callback verifies that state, exchanges
+the code, stores the tokens with the service-role key, and 302s to
+`connected.html`. `supabase/functions/_shared/whoop.ts` also has
+`ensureFreshWhoopToken()` ready for the sync function to import — refreshes
+within 5 minutes of expiry and persists Whoop's rotated refresh token
+every time — but nothing calls it yet; **data sync is the next step.**
+Verified against a throwaway test account: a real `?start=1` call produced
+a correctly-formed Whoop authorize redirect, and its state round-tripped
+correctly through the callback path.
 
 ### 5.4 Personalisation
 

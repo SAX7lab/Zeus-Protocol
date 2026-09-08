@@ -106,6 +106,25 @@ the code, stores the tokens with the service-role key, and 302s to
 `ensureFreshWhoopToken()` — refreshes within 5 minutes of expiry and
 persists Whoop's rotated refresh token every time.
 
+**The connect flow itself is already generic — verified 2026-09-08.**
+Nothing in `whoop-auth`/`whoop-sync`/the device-token flow is tied to the
+operator's account: `whoop-auth` resolves the caller purely from their own
+Supabase session token and signs OAuth state to that user's id, and
+`connGenerateToken()` (Apple Health) scopes a device token to whichever
+user is signed in when they click it. Any ZEUS account can connect its
+own Whoop and Apple Health independently — the code is not the blocker.
+
+**The actual blocker for other people right now is Whoop's own Developer
+Platform, not ZEUS.** The Whoop app is in Development mode there, which
+caps how many Whoop accounts can complete the OAuth consent screen at
+all — checked 2026-09-08, 9 test-user slots remaining. Each person who
+wants to connect needs to be added as a test user in that dashboard
+(developer.whoop.com → the app → test users) first, or they'll be
+rejected by Whoop itself before the request ever reaches `whoop-auth`.
+Past that cap, the only way to open it up to arbitrary users is
+submitting the app there for production/live approval, which removes
+the test-user limit entirely.
+
 **Data sync deployed and verified (2026-09-07).** `whoop-sync`
 (`supabase/functions/whoop-sync`, `verify_jwt = true` — called by the
 client's own authenticated supabase-js instance, unlike whoop-auth's

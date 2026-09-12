@@ -24,7 +24,7 @@ import {
   fetchWhoopUserId,
 } from "../_shared/whoop.ts";
 
-const APP_REDIRECT = "https://sax7sunny.github.io/Zeus-Protocol/connected.html";
+const APP_REDIRECT = "https://sax7lab.github.io/Zeus-Protocol/connected.html";
 const STATE_MAX_AGE_MS = 10 * 60 * 1000;
 
 function html(body: string, status = 200): Response {

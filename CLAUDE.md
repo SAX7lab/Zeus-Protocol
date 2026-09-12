@@ -2,7 +2,7 @@
 
 Personal wellness app: daily agenda, routines, supplements, calendar
 subscriptions, blood-panel tracking. Runs as **one self-contained HTML file**
-served from GitHub Pages at `https://sax7sunny.github.io/Zeus-Protocol/`,
+served from GitHub Pages at `https://sax7lab.github.io/Zeus-Protocol/`,
 added to the iPhone home screen as a web app.
 
 `ROADMAP.md` holds the plan for the backend/multi-user phase. Read it before

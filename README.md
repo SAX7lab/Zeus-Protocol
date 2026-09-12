@@ -30,7 +30,7 @@ you're signed in. A full JSON export/import covers backup and portability
 regardless of sign-in state. Each account can personalise which tabs are
 shown and rename the app to their own "___'s Protocol".
 
-Live at `https://sax7sunny.github.io/Zeus-Protocol/`.
+Live at `https://sax7lab.github.io/Zeus-Protocol/`.
 
 ## Status
 

@@ -4637,22 +4637,10 @@ function connDismissGenerated(){
   connGeneratedPlaintext=null; connMsg='';
   render();
 }
-function connectionsCardHTML(){
-  if(!cloudSession) return '';
-  if(!connOpen){
-    return `<div class="gcard cal-collapsed" onclick="connOpen=true;render()">
-      <div class="gtop"><span class="gtitle">Connections</span>
-        <span class="cal-collapsed-meta">›</span></div>
-    </div>`;
-  }
-  if(!connLoaded&&!connLoading){
-    connLoading=true;
-    // Targeted refresh, not render(): this can resolve while someone is
-    // mid-way through typing a label in the very same card, and a full
-    // render() would wipe that input the instant it landed.
-    connLoadTokens().then(()=>{ connLoading=false; connLoaded=true; refreshConnTokenList(); });
-  }
-  const genBlock = connGeneratedPlaintext ? `
+// Shared by the first-connect prompt below and the token-management card —
+// same generate/reveal form either way, just embedded in different cards.
+function connTokenFormHTML(cta){
+  return connGeneratedPlaintext ? `
     <div class="gsub" style="color:var(--amber);margin-bottom:6px">Copy this now — it will not be shown again.</div>
     <div class="gid-input" style="user-select:all;word-break:break-all;cursor:text">${esc(connGeneratedPlaintext)}</div>
     <div class="backup-row" style="margin-top:0">
@@ -4661,16 +4649,58 @@ function connectionsCardHTML(){
     </div>` : `
     <input class="gid-input" id="connLabelInput" placeholder="Label (optional) — e.g. iPhone Shortcut" value="${esc(connNewLabel)}" ${connGenerating?'disabled':''}>
     <div class="backup-row" style="margin-top:0">
-      <button class="gbtn pri" ${connGenerating?'disabled':''} onclick="connGenerateToken()">${connGenerating?'Generating…':'Generate Shortcut token'}</button>
+      <button class="gbtn pri" ${connGenerating?'disabled':''} onclick="connGenerateToken()">${connGenerating?'Generating…':cta}</button>
     </div>`;
+}
+function connMsgHTML(){
+  return connMsg?`<div class="gsub" style="margin:10px 0 0;color:${/copied/i.test(connMsg)?'var(--moss)':'var(--rose)'}">${esc(connMsg)}</div>`:'';
+}
+// First-time prompt, shown in the Integrations tab in place of activity data
+// until at least one Shortcut token exists — same role as Whoop's "Connect
+// Whoop" card, just backed by a device token instead of OAuth since HealthKit
+// has no web API (ROADMAP.md 5.3).
+function appleHealthConnectCardHTML(){
   return `<div class="gcard">
-    <div class="gtop"><span class="gtitle">Connections</span>
+    <div class="gtop"><span class="gtitle">Apple Health</span></div>
+    <div class="gsub">Steps and workout minutes, via an Apple Shortcut. Not connected.</div>
+    ${connTokenFormHTML('Connect Apple Health')}
+    ${connMsgHTML()}
+  </div>`;
+}
+// Token management once at least one connection exists — add another device,
+// see last-used times, revoke. Collapsed by default like the calendar tab's
+// other settings cards.
+function connectionsCardHTML(){
+  if(!connOpen){
+    return `<div class="gcard cal-collapsed" onclick="connOpen=true;render()">
+      <div class="gtop"><span class="gtitle">Manage Apple Health</span>
+        <span class="cal-collapsed-meta">${connTokens.length} token${connTokens.length===1?'':'s'} ›</span></div>
+    </div>`;
+  }
+  return `<div class="gcard">
+    <div class="gtop"><span class="gtitle">Manage Apple Health</span>
       <button class="ico edit" onclick="connOpen=false;render()" title="Hide">︿</button></div>
     <div class="gsub">Long-lived tokens for the Apple Shortcut that sends Health data — a signed-in session expires in about an hour, too short for a daily automation.</div>
-    ${genBlock}
-    ${connMsg?`<div class="gsub" style="margin:10px 0 0;color:${/copied/i.test(connMsg)?'var(--moss)':'var(--rose)'}">${esc(connMsg)}</div>`:''}
+    ${connTokenFormHTML('Generate Shortcut token')}
+    ${connMsgHTML()}
     <div id="connTokenList" style="margin-top:14px">${connTokenListHTML()}</div>
   </div>`;
+}
+// Orchestrates the two cards above against connTokens — the same signal
+// whoopSectionHTML uses via whoopStatus, so both Integrations cards follow
+// one connected/not-connected pattern.
+function appleHealthSectionHTML(){
+  if(!cloudSession) return '';
+  if(!connLoaded&&!connLoading){
+    connLoading=true;
+    connLoadTokens().then(()=>{ connLoading=false; connLoaded=true; render(); });
+  }
+  if(!connLoaded){
+    return `<div class="gcard"><div class="gtop"><span class="gtitle">Apple Health</span></div>
+      <div class="gsub">Loading…</div></div>`;
+  }
+  if(!connTokens.length) return appleHealthConnectCardHTML();
+  return activitySectionHTML()+connectionsCardHTML();
 }
 
 /* ---------- PERSONALISATION (ROADMAP.md 5.4) ----------
@@ -4952,7 +4982,6 @@ function renderCalendar(c){
   // Same idea as Bio: the subscription and backup cards render first but the
   // view opens below them, on the calendar itself.
   c.insertAdjacentHTML('beforeend', subCardHTML());
-  c.insertAdjacentHTML('beforeend', connectionsCardHTML());
   c.insertAdjacentHTML('beforeend', personalisationCardHTML());
   c.insertAdjacentHTML('beforeend', calDataSectionHTML());
   c.insertAdjacentHTML('beforeend', accountCardHTML());
@@ -5726,7 +5755,7 @@ function bioFold(title,open,flag){
 // for: biomarker panels and blood pressure.
 function renderIntegrations(c){
   c.insertAdjacentHTML('beforeend', whoopSectionHTML());
-  c.insertAdjacentHTML('beforeend', activitySectionHTML());
+  c.insertAdjacentHTML('beforeend', appleHealthSectionHTML());
   c.insertAdjacentHTML('beforeend', brandCard('eight','brand-eight','EIGHT SLEEP',
     'Sleep stages, bed temperature, HRV. <b>Not connected.</b>',
     'Eight Sleep publishes no official API. Only unofficial endpoints exist, which need your account password and can break without warning. I would rather wire this up properly than build on that.'));

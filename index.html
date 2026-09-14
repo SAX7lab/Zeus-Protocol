@@ -3929,9 +3929,11 @@ function systemsReport(){
     const days=Math.floor((dayStart(new Date())-dayStart(new Date(bpLatest().ts)))/86400000);
     const b=bpBand(bpLatest());
     // State tracks HOW RECENT the reading is, not how good it was: green
-    // today, amber within the week, red after that. Set this way in August
-    // 2026 at the user's request — it used to colour by band, which meant a
-    // normal reading from three months ago sat there reading green.
+    // within the last 7 days, amber from 8-14 days, red after that. Set
+    // this way in August 2026 at the user's request — it used to colour by
+    // band, which meant a normal reading from three months ago sat there
+    // reading green; thresholds adjusted in September 2026 (was green only
+    // on the day itself, amber 1-7 days, red past a week).
     // The band has not been dropped, it moved into the detail line, so a
     // High reading still says so even while the dot is green for being
     // fresh. Do not fold the band back into the state without asking.
@@ -3939,7 +3941,7 @@ function systemsReport(){
       detail:bpLatest().sys+'/'+bpLatest().dia+' · '+b.label.toLowerCase()
              +' · '+(days===0?'today':days===1?'yesterday':days+'d ago'),
       val:bpLatest().sys+'/'+bpLatest().dia,
-      state: days===0?'ok' : days<=7?'watch' : 'warn'});
+      state: days<=7?'ok' : days<=14?'watch' : 'warn'});
   }
 
   // Reports the DAY first and the plumbing second: how many events are on

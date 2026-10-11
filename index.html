@@ -101,7 +101,13 @@
   .eyebrow { font-size:12px; letter-spacing:.18em; text-transform:uppercase; color:var(--frost); font-weight:600; }
   h1 { font-family:Georgia,"Times New Roman",serif; font-size:24px; font-weight:600; line-height:1.25; margin-top:6px; }
 
-  .daynav { display:flex; align-items:center; gap:10px; margin-top:8px; }
+  /* .headerctrls wraps the day nav plus the settings button — the button
+     is a sibling, not a daynav child, so toggling .daynav's display for
+     the chromeless tabs (setTab()) never takes it down with it. That is
+     the whole point: Settings must stay reachable no matter which tabs
+     or sections are on screen. */
+  .headerctrls { display:flex; align-items:center; gap:10px; margin-top:8px; }
+  .daynav { display:flex; align-items:center; gap:10px; flex:1; min-width:0; }
   .daynav button { background:var(--surface); border:1px solid var(--line); color:var(--ink);
     width:32px; height:32px; border-radius:9px; font-size:15px; flex-shrink:0; }
   .daynav .dlabel { flex:1; font-size:14px; color:var(--muted); }
@@ -985,7 +991,8 @@
       padding:32px 16px 116px; border-bottom:none; border-right:1px solid var(--line);
       display:flex; flex-direction:column; overflow-y:auto;
     }
-    .daynav { flex-wrap:wrap; row-gap:8px; }
+    .headerctrls { flex-wrap:wrap; row-gap:8px; }
+    .daynav { flex-wrap:wrap; row-gap:8px; flex:1 1 100%; }
     .daynav .dlabel { flex:1 1 100%; order:-1; }
 
     /* Tabs: a vertical list instead of a scroller, active mark moves from
@@ -1123,11 +1130,18 @@
     </div>
     <button class="logo" aria-label="Replay briefing" onclick="bootReplay()">Z&#931;VS</button>
   </div>
-  <div class="daynav">
-    <button onclick="shiftDay(-1)">‹</button>
-    <span class="dlabel" id="date"></span>
-    <button class="today-btn" onclick="goToday()">Today</button>
-    <button onclick="shiftDay(1)">›</button>
+  <div class="headerctrls">
+    <div class="daynav">
+      <button onclick="shiftDay(-1)">‹</button>
+      <span class="dlabel" id="date"></span>
+      <button class="today-btn" onclick="goToday()">Today</button>
+      <button onclick="shiftDay(1)">›</button>
+    </div>
+    <!-- Always present, on every tab, regardless of SECTIONS — the one
+         place sign-in, personalisation, backup/erase and device
+         connections live now, so they can never again be sealed behind
+         a tab the user has hidden. See openSettingsSheet(). -->
+    <button class="ico" id="settingsBtn" onclick="openSettingsSheet()" aria-label="Settings" title="Settings">⚙</button>
   </div>
   <aside class="rail-right" id="railRight">
   <!-- Desktop-only: the nexus, always on screen here. Filled by
@@ -1334,6 +1348,14 @@
   <div class="sheet" id="consentSheetBody"></div>
 </div>
 
+<!-- Settings. Opened from the header button, reachable on every tab —
+     see renderSettingsSheet(). Holds everything that used to live in the
+     Calendar tab's account panel plus the Whoop/Apple Health connect and
+     manage cards, so none of it depends on any tab being visible. -->
+<div class="overlay" id="settingsOverlay">
+  <div class="sheet" id="settingsSheetBody"></div>
+</div>
+
 <script>
 // Display order is Monday-first to match the month grid; the stored values
 // stay JS day numbers (0 = Sunday).
@@ -1399,11 +1421,21 @@ let seenDefaults=[];   // ids already reconciled against saved data
 let DISPLAY_NAME='';
 const SECTION_KEYS=['agenda','routine','supps','tasks','cal','bio','integrations'];
 // Merges onto the all-on default rather than trusting a saved/remote value
-// outright, and never allows every key to end up false — an empty tab bar
-// is not a valid state a backup or a profile row should be able to force.
+// outright. Missing, null, an array, a non-object, or an object with none
+// of SECTION_KEYS present all count as malformed and fall back to every
+// section enabled — not just one — since there is no user intent to
+// preserve in that case. A header Settings button now always reaches
+// these toggles regardless of SECTIONS, but a corrupt value should never
+// have to depend on that to recover.
 function normalizeSections(raw){
-  const merged={agenda:true,routine:true,supps:true,tasks:true,cal:true,bio:true,integrations:true,
-    ...(raw&&typeof raw==='object'?raw:{})};
+  const allTrue={agenda:true,routine:true,supps:true,tasks:true,cal:true,bio:true,integrations:true};
+  const isPlainObject=raw&&typeof raw==='object'&&!Array.isArray(raw);
+  if(!isPlainObject||!SECTION_KEYS.some(k=>k in raw)) return {...allTrue};
+  const merged={...allTrue, ...raw};
+  SECTION_KEYS.forEach(k=>{ if(typeof merged[k]!=='boolean') merged[k]=true; });
+  // A valid object that deliberately disables every section is different —
+  // that is real user intent, not corruption — but an empty tab bar is
+  // still not a state the app can leave itself in, so one tab survives.
   if(!SECTION_KEYS.some(k=>merged[k])) merged.agenda=true;
   return merged;
 }
@@ -2916,6 +2948,7 @@ function render(){
   renderProgress(); renderEatWindow(); renderRail(); renderArc(); saveAll();
   renderCloudConflict();
   renderConsentGate();
+  renderSettingsSheet();
   syncHeaderHeight();
 }
 
@@ -4282,10 +4315,11 @@ function subCardHTML(){
 }
 
 /* ---------- ACCOUNT & CLOUD SYNC PANEL ----------
-   Sits directly beneath the subscription card. Signed out, it is a
-   collapsed one-liner so a user who never wants cloud sync pays nothing
-   for it visually either — opening it is also what triggers the first,
-   speculative load of supabase-js (see acctToggleOpen). */
+   Lives in the header Settings sheet (renderSettingsSheet), not any one
+   tab. Signed out, it is a collapsed one-liner so a user who never wants
+   cloud sync pays nothing for it visually either — opening it is also
+   what triggers the first, speculative load of supabase-js (see
+   acctToggleOpen). */
 function cloudStatusLabel(){
   if(cloudStatus==='synced') return {cls:'ok', txt:'Synced'};
   if(cloudStatus==='pending') return {cls:'watch', txt:'Syncing…'};
@@ -4490,6 +4524,38 @@ function renderConsentGate(){
     </div>`;
   ov.classList.add('open');
 }
+
+/* ---------- SETTINGS SHEET ----------
+   The single place sign-in, personalisation, backup/erase and device
+   connections live, reachable from the header button on every tab. It used
+   to be the Calendar tab's "account panel" — hiding that tab via the
+   section toggles sealed all of it away, including the toggles themselves.
+   Pulling it out from under the tab system is the actual fix; see
+   normalizeSections() and the startup check below for the belt-and-braces
+   half of it. */
+let settingsOpen=false;
+function openSettingsSheet(){
+  settingsOpen=true;
+  if(!cloudSession) loadSupabaseSDK().catch(()=>{});   // pre-warm only, same as acctToggleOpen used to
+  render();
+}
+function closeSettingsSheet(){
+  settingsOpen=false;
+  render();
+}
+function renderSettingsSheet(){
+  const ov=document.getElementById('settingsOverlay'); if(!ov) return;
+  if(!settingsOpen){ ov.classList.remove('open'); return; }
+  document.getElementById('settingsSheetBody').innerHTML=
+    `<h2>Settings</h2>`
+    +accountCardHTML()
+    +personalisationCardHTML()
+    +whoopConnectCardHTML()
+    +appleHealthSettingsHTML()
+    +calDataSectionHTML()
+    +`<div class="sheet-actions"><button class="btn-primary" style="flex:1" onclick="closeSettingsSheet()">Done</button></div>`;
+  ov.classList.add('open');
+}
 function accountCardHTML(){
   if(!acctOpen){
     const meta=cloudSession?esc(cloudSession.user.email||cloudEmail):'optional';
@@ -4657,10 +4723,10 @@ function connTokenFormHTML(cta){
 function connMsgHTML(){
   return connMsg?`<div class="gsub" style="margin:10px 0 0;color:${/copied/i.test(connMsg)?'var(--moss)':'var(--rose)'}">${esc(connMsg)}</div>`:'';
 }
-// First-time prompt, shown in the Integrations tab in place of activity data
-// until at least one Shortcut token exists — same role as Whoop's "Connect
-// Whoop" card, just backed by a device token instead of OAuth since HealthKit
-// has no web API (ROADMAP.md 5.3).
+// First-time prompt, shown in the Settings sheet until at least one
+// Shortcut token exists — same role as Whoop's "Connect Whoop" card, just
+// backed by a device token instead of OAuth since HealthKit has no web
+// API (ROADMAP.md 5.3).
 function appleHealthConnectCardHTML(){
   return `<div class="gcard">
     <div class="gtop"><span class="gtitle">Apple Health</span></div>
@@ -4670,8 +4736,8 @@ function appleHealthConnectCardHTML(){
   </div>`;
 }
 // Token management once at least one connection exists — add another device,
-// see last-used times, revoke. Collapsed by default like the calendar tab's
-// other settings cards.
+// see last-used times, revoke. Collapsed by default like the Settings
+// sheet's other cards.
 function connectionsCardHTML(){
   if(!connOpen){
     return `<div class="gcard cal-collapsed" onclick="connOpen=true;render()">
@@ -4688,10 +4754,12 @@ function connectionsCardHTML(){
     <div id="connTokenList" style="margin-top:14px">${connTokenListHTML()}</div>
   </div>`;
 }
-// Orchestrates the two cards above against connTokens — the same signal
-// whoopSectionHTML uses via whoopStatus, so both Integrations cards follow
-// one connected/not-connected pattern.
-function appleHealthSectionHTML(){
+// Connect card + token management — lives in the header Settings sheet now
+// (renderSettingsSheet). The actual step/workout dashboard is
+// activitySectionHTML(), called directly from renderIntegrations; it
+// already no-ops until something has synced, so it needs no connTokens
+// check here.
+function appleHealthSettingsHTML(){
   if(!cloudSession) return '';
   if(!connLoaded&&!connLoading){
     connLoading=true;
@@ -4701,8 +4769,7 @@ function appleHealthSectionHTML(){
     return `<div class="gcard"><div class="gtop"><span class="gtitle">Apple Health</span></div>
       <div class="gsub">Loading…</div></div>`;
   }
-  if(!connTokens.length) return appleHealthConnectCardHTML();
-  return activitySectionHTML()+connectionsCardHTML();
+  return connTokens.length ? connectionsCardHTML() : appleHealthConnectCardHTML();
 }
 
 /* ---------- PERSONALISATION (ROADMAP.md 5.4) ----------
@@ -4749,6 +4816,7 @@ function personalisationCardHTML(){
     <div class="gsub">Your name shows in the header. Section switches decide which tabs appear — synced to your account when signed in, kept on this device otherwise.</div>
     <input class="gid-input" id="displayNameInput" placeholder="Your name (optional)" value="${esc(DISPLAY_NAME)}" onchange="setDisplayName(this.value)">
     <div class="section-toggle-list">${rows}</div>
+    <div class="gsub" style="margin-top:8px">Hiding a section only hides its tab — it never deletes anything.</div>
   </div>`;
 }
 
@@ -4981,12 +5049,12 @@ function renderWeekView(c){
 
 function renderCalendar(c){
   if(calMode==='day'){ renderDayView(c); return; }
-  // Same idea as Bio: the subscription and backup cards render first but the
-  // view opens below them, on the calendar itself.
+  // Same idea as Bio: the subscription card renders first but the view
+  // opens below it, on the calendar itself. Account sign-in, personalisation,
+  // backup/erase and device connections used to render here too — they moved
+  // into the header Settings sheet (openSettingsSheet) so hiding this tab can
+  // never seal them away again.
   c.insertAdjacentHTML('beforeend', subCardHTML());
-  c.insertAdjacentHTML('beforeend', personalisationCardHTML());
-  c.insertAdjacentHTML('beforeend', calDataSectionHTML());
-  c.insertAdjacentHTML('beforeend', accountCardHTML());
 
   c.insertAdjacentHTML('beforeend',
     `<div class="cal-view-switch" id="scrollAnchor">
@@ -5503,7 +5571,11 @@ function whoopFreshnessHTML(){
   const hh=String(d.getHours()).padStart(2,'0'), mm=String(d.getMinutes()).padStart(2,'0');
   return `<span style="color:var(--faint)">Synced ${hh}:${mm}</span>`;
 }
-function whoopSectionHTML(){
+// Connect card + status line — lives in the header Settings sheet now
+// (renderSettingsSheet), not here. Shares whoopStatus/whoopStatusLoaded
+// with whoopSectionHTML below via the same lazy-load guard, so whichever
+// of the two renders first is the one that triggers loadWhoopStatus().
+function whoopConnectCardHTML(){
   if(!cloudSession) return '';
   if(!whoopStatusLoaded&&!whoopStatusLoading){
     whoopStatusLoading=true;
@@ -5513,14 +5585,28 @@ function whoopSectionHTML(){
     return `<div class="gcard"><div class="gtop"><span class="gtitle">Whoop</span></div>
       <div class="gsub">Loading…</div></div>`;
   }
-  if(!whoopStatus){
+  if(whoopStatus){
     return `<div class="gcard">
-      <div class="gtop"><span class="gtitle">Whoop</span></div>
-      <div class="gsub">Recovery, strain, sleep and workouts. Not connected.</div>
-      ${whoopMsg?`<div class="gsub" style="color:var(--rose)">${esc(whoopMsg)}</div>`:''}
-      <button class="gbtn pri" onclick="whoopConnect()">Connect Whoop</button>
+      <div class="gtop"><span class="gtitle">Whoop</span>${whoopFreshnessHTML()}</div>
+      <div class="gsub">Connected. Recovery, strain and sleep are in the Integrations tab.</div>
     </div>`;
   }
+  return `<div class="gcard">
+    <div class="gtop"><span class="gtitle">Whoop</span></div>
+    <div class="gsub">Recovery, strain, sleep and workouts. Not connected.</div>
+    ${whoopMsg?`<div class="gsub" style="color:var(--rose)">${esc(whoopMsg)}</div>`:''}
+    <button class="gbtn pri" onclick="whoopConnect()">Connect Whoop</button>
+  </div>`;
+}
+// Dashboard only — connecting lives in Settings now (whoopConnectCardHTML
+// above). Nothing to show here until whoopStatus confirms a connection.
+function whoopSectionHTML(){
+  if(!cloudSession) return '';
+  if(!whoopStatusLoaded&&!whoopStatusLoading){
+    whoopStatusLoading=true;
+    loadWhoopStatus().then(()=>{ whoopStatusLoading=false; whoopStatusLoaded=true; render(); });
+  }
+  if(!whoopStatusLoaded||!whoopStatus) return '';
 
   const days=activityDayRange();
   const todayKey=key(new Date());
@@ -5757,7 +5843,7 @@ function bioFold(title,open,flag){
 // for: biomarker panels and blood pressure.
 function renderIntegrations(c){
   c.insertAdjacentHTML('beforeend', whoopSectionHTML());
-  c.insertAdjacentHTML('beforeend', appleHealthSectionHTML());
+  c.insertAdjacentHTML('beforeend', activitySectionHTML());
   c.insertAdjacentHTML('beforeend', brandCard('eight','brand-eight','EIGHT SLEEP',
     'Sleep stages, bed temperature, HRV. <b>Not connected.</b>',
     'Eight Sleep publishes no official API. Only unofficial endpoints exist, which need your account password and can break without warning. I would rather wire this up properly than build on that.'));
@@ -6722,6 +6808,20 @@ function bootReplay(){ bootShow(true); }
 loadAll();
 ensureActiveTabVisible();
 render();
+// Belt and braces: the header Settings button is a static element, not
+// gated by SECTIONS, so this should never actually fire — but settings
+// being unreachable is a state the app must never persist, so if that
+// button is ever missing or hidden from the DOM for any reason, force
+// every section back on rather than leave the user with no way back in.
+(function ensureSettingsReachable(){
+  const btn=document.getElementById('settingsBtn');
+  const reachable=btn && !btn.hidden && getComputedStyle(btn).display!=='none';
+  if(reachable) return;
+  SECTIONS=normalizeSections();
+  saveAll();
+  ensureActiveTabVisible();
+  render();
+})();
 bootMaybeShow();
 if(ANCHORED_TABS.includes(activeTab)) scrollToAnchor();
 document.getElementById('tabs').addEventListener('scroll',syncTabFade,{passive:true});

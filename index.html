@@ -377,15 +377,6 @@
   .backup-row { display:flex; gap:8px; flex-wrap:wrap; margin-top:8px; }
 
 
-  .biocard { margin:10px 6px 12px; padding:15px 16px; border-radius:14px;
-    background:var(--surface); border:1px solid var(--line); }
-  .biotop { display:flex; align-items:center; justify-content:space-between; gap:12px; }
-  .brandname { font-size:17px; font-weight:800; letter-spacing:.02em; }
-  .brand-eight { color:#FFFFFF; letter-spacing:.06em; }
-  .connect-btn { flex-shrink:0; padding:9px 15px; border-radius:9px; border:1px solid var(--line);
-    background:var(--bg); color:var(--muted); font-size:13px; font-weight:700; }
-  .biostatus { font-size:12.5px; color:var(--muted); line-height:1.5; margin-top:9px; }
-  .biostatus b { color:var(--ink); }
 
   .upload-zone { margin:16px 6px 10px; padding:20px 18px; border:1.5px dashed rgba(95,216,245,.45);
     border-radius:14px; text-align:center; background:rgba(95,216,245,.06); }
@@ -910,7 +901,7 @@
      entirely, so anything here that needs to glow uses filter:drop-shadow
      instead, which follows the clip. */
   .fab, .btn-primary, .btn-ghost, .btn-danger, .import-btn, .gbtn, .link-btn,
-  .connect-btn, .earlier-btn, .day-back, .chip, .logo, .seg button, .opt-pill {
+  .earlier-btn, .day-back, .chip, .logo, .seg button, .opt-pill {
     border-radius:0;
     clip-path:polygon(var(--notch) 0, 100% 0, 100% calc(100% - var(--notch)),
                       calc(100% - var(--notch)) 100%, 0 100%, 0 var(--notch));
@@ -923,16 +914,16 @@
 
   /* Panels get bracket marks at opposite corners. Cheap, and it reads as
      HUD instantly without touching the panel's own box. */
-  .gcard, .biocard, .upload-zone, .note { position:relative; }
-  .gcard::before, .biocard::before, .upload-zone::before, .note::before,
-  .gcard::after,  .biocard::after,  .upload-zone::after,  .note::after {
+  .gcard, .upload-zone, .note { position:relative; }
+  .gcard::before, .upload-zone::before, .note::before,
+  .gcard::after,  .upload-zone::after,  .note::after {
     content:''; position:absolute; width:12px; height:12px;
     border:2px solid var(--frost); pointer-events:none; opacity:.55;
   }
-  .gcard::before, .biocard::before, .upload-zone::before, .note::before {
+  .gcard::before, .upload-zone::before, .note::before {
     top:-1px; left:-1px; border-right:0; border-bottom:0;
   }
-  .gcard::after, .biocard::after, .upload-zone::after, .note::after {
+  .gcard::after, .upload-zone::after, .note::after {
     bottom:-1px; right:-1px; border-left:0; border-top:0;
   }
 
@@ -971,7 +962,7 @@
   /* Bars and inputs square off to match the bevelled buttons. */
   .progress-track, .eat-track, .field input, .field select, .gid-input,
   .compare-sel, .sheet, .desc-panel, .md-point, .wait-note, .note,
-  .upload-zone, .gcard, .biocard, .dose, .block-time,
+  .upload-zone, .gcard, .dose, .block-time,
   .streak-pill, .undo-toast { border-radius:0; }
 
   /* ============ Desktop (>=900px): three-column shell ============
@@ -2169,7 +2160,7 @@ document.getElementById('backupInput').addEventListener('change',e=>{
    against the previously uploaded panel.
    ====================================================================== */
 let PANELS=[];          // {id,date,name,label,values:[{key,section,label,displayName,v,text,qual,unit,refLo,refHi}]}
-let bioNote='', bioBusy=false, bioMsg='';
+let bioBusy=false, bioMsg='';
 // Bio opens on blood pressure; the two heavier sections start folded away.
 let bioUploadOpen=false;
 // null = fall back to the default pair (newest by date vs second newest)
@@ -4785,7 +4776,7 @@ function connMsgHTML(){
 function appleHealthConnectCardHTML(){
   return `<div class="gcard">
     <div class="gtop"><span class="gtitle">Apple Health</span></div>
-    <div class="gsub">Steps and workout minutes, via an Apple Shortcut. Not connected.</div>
+    <div class="gsub">${connGeneratedPlaintext?'Connected. Paste this token into the Apple Shortcut.':'Steps and workout minutes, via an Apple Shortcut. Not connected.'}</div>
     ${connTokenFormHTML('Connect Apple Health')}
     ${connMsgHTML()}
   </div>`;
@@ -4794,7 +4785,9 @@ function appleHealthConnectCardHTML(){
 // see last-used times, revoke. Collapsed by default like the Settings
 // sheet's other cards.
 function connectionsCardHTML(){
-  if(!connOpen){
+  // The first token flips Settings from the connect card to this one,
+  // collapsed by default — which used to swallow its one-time reveal.
+  if(!connOpen&&!connGeneratedPlaintext){
     return `<div class="gcard cal-collapsed" onclick="connOpen=true;render()">
       <div class="gtop"><span class="gtitle">Manage Apple Health</span>
         <span class="cal-collapsed-meta">${connTokens.length} token${connTokens.length===1?'':'s'} ›</span></div>
@@ -5144,16 +5137,6 @@ function renderCalendar(c){
       }
     },{passive:true});
   }
-}
-
-function brandCard(id,cls,label,status,detail){
-  return `<div class="biocard">
-    <div class="biotop">
-      <span class="brandname ${cls}">${label}</span>
-      <button class="connect-btn" data-bio="${id}">Connect</button>
-    </div>
-    <div class="biostatus">${status}${bioNote===id?'<br><br>'+detail:''}</div>
-  </div>`;
 }
 
 /* ---------- MARKER DETAIL ----------
@@ -5925,13 +5908,25 @@ function bioFold(title,open,flag){
 // Device connections and activity/recovery data moved to their own
 // Integrations tab (ROADMAP.md 5.3) — Bio keeps only what it's named
 // for: biomarker panels and blood pressure.
+// Each source shows its dashboard when connected and its connect card when
+// not — the same cards Settings uses, so connecting works from either place.
+// Both integrations are account-backed (OAuth, device tokens), so signed
+// out there is nothing to connect yet, only a way to sign in.
 function renderIntegrations(c){
-  c.insertAdjacentHTML('beforeend', whoopSectionHTML());
-  c.insertAdjacentHTML('beforeend', activitySectionHTML());
-  c.insertAdjacentHTML('beforeend', brandCard('eight','brand-eight','EIGHT SLEEP',
-    'Sleep stages, bed temperature, HRV. <b>Not connected.</b>',
-    'Eight Sleep publishes no official API. Only unofficial endpoints exist, which need your account password and can break without warning. I would rather wire this up properly than build on that.'));
-  c.querySelectorAll('[data-bio]').forEach(b=>b.onclick=()=>{ bioNote=bioNote===b.dataset.bio?'':b.dataset.bio; render(); });
+  if(!cloudSession){
+    c.insertAdjacentHTML('beforeend', `<div class="gcard">
+      <div class="gtop"><span class="gtitle">Integrations</span></div>
+      <div class="gsub">Whoop and Apple Health sync through your account. Sign in to connect them.</div>
+      <button class="gbtn pri" onclick="acctOpen=true;openSettingsSheet()">Open Settings</button>
+    </div>`);
+    return;
+  }
+  c.insertAdjacentHTML('beforeend', whoopSectionHTML() || whoopConnectCardHTML());
+  // While a freshly generated token is on screen, keep the connect card:
+  // the token already counts as connected, and switching to the dashboard
+  // would take its one-time reveal away before it was copied.
+  c.insertAdjacentHTML('beforeend', connGeneratedPlaintext ? appleHealthConnectCardHTML()
+    : (activitySectionHTML() || appleHealthSettingsHTML()));
 }
 
 function renderBio(c){
@@ -5952,8 +5947,7 @@ function renderBio(c){
 
   if(!PANELS.length){
     c.insertAdjacentHTML('beforeend','<div class="empty">No blood panels yet.<br>Upload one to start tracking.</div>');
-    c.querySelectorAll('[data-bio]').forEach(b=>b.onclick=()=>{ bioNote=bioNote===b.dataset.bio?'':b.dataset.bio; render(); });
-    return;
+      return;
   }
 
   // PANELS is sorted by date, so the default pair is the newest panel and the
@@ -6024,7 +6018,6 @@ function renderBio(c){
       </div>`);
   });
 
-  c.querySelectorAll('[data-bio]').forEach(b=>b.onclick=()=>{ bioNote=bioNote===b.dataset.bio?'':b.dataset.bio; render(); });
   c.querySelectorAll('[data-mk]').forEach(x=>x.onclick=()=>openMarkerDetail(x.dataset.mk));
   c.querySelectorAll('[data-pedit]').forEach(b=>b.onclick=()=>openPanelSheet(b.dataset.pedit));
   c.querySelectorAll('[data-pdel]').forEach(b=>b.onclick=()=>{

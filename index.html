@@ -1925,12 +1925,24 @@ function activityDataFor(day){
   const bySource=METRICS[day];
   if(!bySource) return null;
   const data={};
-  let updated=null;
-  Object.values(bySource).forEach(entry=>{
+  let updated=null, any=false;
+  Object.entries(bySource).forEach(([src,entry])=>{
+    if(!sourceConnected(src)) return;
+    any=true;
     Object.assign(data, entry.data);
     if(!updated || entry.updated_at>updated) updated=entry.updated_at;
   });
-  return {data, updated_at:updated};
+  return any?{data, updated_at:updated}:null;
+}
+// Disconnecting never deletes the rows a source already wrote to metrics —
+// they stay on the account and come back on reconnect — so "has data" can
+// no longer stand in for "is connected". Before this, a revoked Shortcut
+// token left the Apple Health card and the Integrations SYSTEMS row up
+// indefinitely, fed by nothing but old rows.
+function sourceConnected(src){
+  if(src==='apple_health') return connTokens.length>0;
+  if(src==='whoop') return !!whoopStatus;
+  return true;
 }
 // Tolerates both shapes seen from the Shortcut: a flat workout_minutes
 // number, or an older workouts[] array (each carrying its own minutes).
@@ -1948,12 +1960,13 @@ function activityStepsFor(data){
 }
 // Newest updated_at across every day/source currently held — "when did
 // the Shortcut last actually run", independent of which day is selected.
+// Apple Health only — its sole caller is that card, and Whoop has its own
+// last_sync (whoopFreshnessHTML) that a Whoop row here would shadow.
 function metricsFreshness(){
   let newest=null;
   Object.values(METRICS).forEach(bySource=>{
-    Object.values(bySource).forEach(entry=>{
-      if(!newest || entry.updated_at>newest) newest=entry.updated_at;
-    });
+    const entry=bySource.apple_health;
+    if(entry && (!newest || entry.updated_at>newest)) newest=entry.updated_at;
   });
   return newest;
 }
@@ -2016,6 +2029,11 @@ async function cloudReconcile(sb){
   // read-only mirror INTO the app (ROADMAP.md 5.3), not a bidirectional
   // sync, so it has no conflict concept and no reason to wait on one.
   await cloudFetchMetrics(sb);
+  // Connection status alongside the metrics it gates (sourceConnected()):
+  // without this, a token revoked on another device kept its source's
+  // card alive here until something happened to re-trigger a lazy load.
+  await connLoadTokens(); connLoaded=true;
+  await loadWhoopStatus(); whoopStatusLoaded=true;
   let remoteRow=null;
   try{
     const {data,error}=await sb.from('app_data')
@@ -4017,7 +4035,7 @@ function systemsReport(){
   // domain is not a deviation to report on, it just doesn't exist yet.
   // Reads whichever source(s) wrote into METRICS for this day; nothing
   // here assumes it's Whoop specifically (see activityDataFor()).
-  if(cloudSession && (whoopStatus || Object.keys(METRICS).length)){
+  if(cloudSession && (sourceConnected('whoop') || sourceConnected('apple_health'))){
     const entry=activityDataFor(key(viewDate));
     const recovery=entry?entry.data.recovery_score:null;
     const steps=entry?activityStepsFor(entry.data):null;
@@ -4034,8 +4052,13 @@ function systemsReport(){
         val: steps!=null?steps.toLocaleString('en-GB'):'—', state:'ok'});
     }
   }
-  return out;
+  // A tab switched off in Personalisation takes its row with it — here,
+  // not in the Nexus, so the SYSTEMS list, the Nexus and the header tint
+  // all drop it together. Fasting belongs to no tab and always stays.
+  return out.filter(r=>!SYS_SECTION[r.key]||SECTIONS[SYS_SECTION[r.key]]);
 }
+const SYS_SECTION={Routine:'routine',Supplements:'supps',tasks:'tasks',
+  bio:'bio',bp:'bio',cal:'cal',integrations:'integrations'};
 
 // Worst state wins. Read by the SYSTEMS block and by the header's completion
 // bar, which is why it is a function and not an expression inside one of them.
@@ -4732,6 +4755,25 @@ function connTokenFormHTML(cta){
     <div class="backup-row" style="margin-top:0">
       <button class="gbtn pri" ${connGenerating?'disabled':''} onclick="connGenerateToken()">${connGenerating?'Generating…':cta}</button>
     </div>`;
+}
+// Revokes every live token at once rather than one — a single leftover
+// token would keep the source connected (sourceConnected()) and keep the
+// Shortcut posting. Synced rows stay in metrics, see sourceConnected().
+async function connDisconnectAll(){
+  if(!cloudSession) return;
+  if(!confirm('Disconnect Apple Health? All Shortcut tokens are revoked and the Shortcut stops syncing. Data already synced stays on your account.')) return;
+  try{
+    const sb=await getSbClient();
+    const {error}=await sb.from('device_tokens')
+      .update({revoked_at:new Date().toISOString()})
+      .eq('user_id',cloudSession.user.id).is('revoked_at',null);
+    if(error) throw error;
+    await connLoadTokens();
+    connOpen=false;
+  }catch(e){
+    connMsg=e.message||'Could not disconnect Apple Health.';
+  }
+  render();
 }
 function connMsgHTML(){
   return connMsg?`<div class="gsub" style="margin:10px 0 0;color:${/copied/i.test(connMsg)?'var(--moss)':'var(--rose)'}">${esc(connMsg)}</div>`:'';
@@ -5461,7 +5503,11 @@ function activityShiftDay(delta){
 }
 function activitySectionHTML(){
   if(!cloudSession) return '';   // cloud-only by nature
-  if(!Object.keys(METRICS).length) return '';   // nothing has ever synced
+  if(!connLoaded&&!connLoading){
+    connLoading=true;
+    connLoadTokens().then(()=>{ connLoading=false; connLoaded=true; render(); });
+  }
+  if(!sourceConnected('apple_health')) return '';
   const days=activityDayRange();
   const todayKey=key(new Date());
   const selDay=actSelectedDay&&days.includes(actSelectedDay)?actSelectedDay:todayKey;
@@ -5491,6 +5537,10 @@ function activitySectionHTML(){
     </div>
     <div class="act-stats">${stats}</div>
     ${charts}
+    ${connMsgHTML()}
+    <div class="backup-row" style="margin-top:14px">
+      <button class="opt-pill off" onclick="connDisconnectAll()">Disconnect Apple Health</button>
+    </div>
   </div>`;
 }
 
@@ -5572,6 +5622,24 @@ async function whoopSyncNow(){
   }
   whoopSyncing=false; render();
 }
+// Deletes the client's own whoop_tokens row (RLS "own whoop tokens"
+// allows it). That alone stops whoop-sync-all, which only walks existing
+// rows. The grant is not revoked on Whoop's side — remove the app there
+// too for a full unlink. Synced rows stay in metrics, see sourceConnected().
+async function whoopDisconnect(){
+  if(!cloudSession) return;
+  if(!confirm('Disconnect Whoop? Syncing stops. Data already synced stays on your account.')) return;
+  whoopMsg='';
+  try{
+    const sb=await getSbClient();
+    const {error}=await sb.from('whoop_tokens').delete().eq('user_id',cloudSession.user.id);
+    if(error) throw error;
+    whoopStatus=null;
+  }catch(e){
+    whoopMsg=e.message||'Could not disconnect Whoop.';
+  }
+  render();
+}
 function whoopFreshnessHTML(){
   if(!whoopStatus) return '';
   if(!whoopStatus.last_sync) return `<span style="color:var(--amber)">Never synced</span>`;
@@ -5602,6 +5670,8 @@ function whoopConnectCardHTML(){
     return `<div class="gcard">
       <div class="gtop"><span class="gtitle">Whoop</span>${whoopFreshnessHTML()}</div>
       <div class="gsub">Connected. Recovery, strain and sleep are in the Integrations tab.</div>
+      ${whoopMsg?`<div class="gsub" style="color:var(--rose)">${esc(whoopMsg)}</div>`:''}
+      <button class="opt-pill off" onclick="whoopDisconnect()">Disconnect Whoop</button>
     </div>`;
   }
   return `<div class="gcard">
@@ -5670,6 +5740,7 @@ function whoopSectionHTML(){
     ${whoopMsg?`<div class="gsub" style="color:var(--rose)">${esc(whoopMsg)}</div>`:''}
     <div class="backup-row" style="margin-top:2px">
       <button class="opt-pill" ${whoopSyncing?'disabled':''} onclick="whoopSyncNow()">${whoopSyncing?'Syncing…':'Sync now'}</button>
+      <button class="opt-pill off" ${whoopSyncing?'disabled':''} onclick="whoopDisconnect()">Disconnect</button>
     </div>
     ${charts}
   </div>`;
